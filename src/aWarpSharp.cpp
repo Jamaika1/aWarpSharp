@@ -22,7 +22,7 @@
 #include <cassert>
 #include <algorithm>
 
-__declspec(align(16)) static const unsigned char dq0toF[0x10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+__attribute__((aligned(16))) static const unsigned char dq0toF[0x10] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 
 int g_cpuid;
 
@@ -75,11 +75,11 @@ void Sobel(PVideoFrame &src, PVideoFrame &dst, int plane, int thresh, const Vide
   const int padded_div4_rowsize = (dst_row_size + 3) >> 2;
   const int i = padded_div4_rowsize; // for asm
 
-  if (g_cpuid & CPUF_SSE2)
+  if (!(g_cpuid & CPUF_SSE2))
     // SSE2 version
     for (int y = 0; y < height; y++)
     {
-#if 1 // def _M_X64
+#if 0 // def _M_X64
       // 0: prev=0 curr = 0 next = 1
       // y-1: prev = y-2, curr = y-1, next = y-1
       // else between: prev = y-1, curr = y, next = y+1
@@ -165,94 +165,90 @@ void Sobel(PVideoFrame &src, PVideoFrame &dst, int plane, int thresh, const Vide
           }
         }
 #else
-      __asm {
-        mov	QSI, psrc
-        mov	QDI, pdst
-        movsx_int	QDX, src_pitch
-        xor	QAX, QAX
-        movsx_int	QCX, y
-        test	QCX, QCX
-        cmovnz	QAX, QDX
-        inc	QCX
-        add	QDX, QAX
-        cmp	ecx, height     // 32 bit O.K.
-        cmovz	QDX, QAX
-        sub	QSI, QAX
-        movsx_int	QCX, i
-        sub	QDI, 10h
-        sub	QDI, QSI
-        movd	xmm0, thresh
-        pshufd	xmm0, xmm0, 0
-        packssdw	xmm0, xmm0
-        packuswb	xmm0, xmm0
-        align	10h
-        l :
-        movdqu	xmm2, [QSI - 1]
-          movdqu	xmm3, [QSI]
-          movdqu	xmm4, [QSI + 1]
-          movdqu	xmm5, [QSI + QDX - 1]
-          movdqu	xmm6, [QSI + QDX]
-          movdqu	xmm7, [QSI + QDX + 1]
-
-          movdqa	xmm1, xmm2
-          pavgb	xmm1, xmm4
-          pavgb	xmm3, xmm1
-
-          movdqa	xmm1, xmm5
-          pavgb	xmm1, xmm7
-          pavgb	xmm6, xmm1
-
-          movdqa	xmm1, xmm3
-          psubusb	xmm3, xmm6
-          psubusb	xmm6, xmm1
-          por	xmm6, xmm3
-
-          movdqu	xmm1, [QSI + QAX - 1]
-          movdqu	xmm3, [QSI + QAX + 1]
-          pavgb	xmm5, xmm2
-          pavgb	xmm7, xmm4
-          pavgb	xmm1, xmm5
-          pavgb	xmm3, xmm7
-          movdqa	xmm5, xmm1
-          psubusb	xmm1, xmm3
-          psubusb	xmm3, xmm5
-          por	xmm1, xmm3
-
-          movdqa	xmm2, xmm6
-          paddusb	xmm2, xmm1
-          pmaxub	xmm1, xmm6
-          paddusb	xmm2, xmm1
-
-          movdqa	xmm3, xmm2
-          paddusb	xmm2, xmm2
-          paddusb	xmm2, xmm3
-          paddusb	xmm2, xmm2
-          pminub	xmm2, xmm0 // thresh
-          add	QSI, 10h
-          sub	QCX, 4
-          jb	le1
-          movntdq[QSI + QDI], xmm2
-          jnz	l
-          jmp	lx
-          le1 :
-        test	QCX, 2
-          jz	le2
-          movq	qword ptr[QSI + QDI], xmm2
-          test	QCX, 1
-          jz	lx
-          add	QSI, 8
-          psrldq	xmm2, 8
-          le2:
-        movd[QSI + QDI], xmm2
-          lx :
-      }
+      asm volatile ( \
+        "mov       %[psrc], %%rsi          \n\t" \
+        "mov       %[pdst], %%rdi          \n\t" \
+        "movsxd    %[src_pitch], %%rdx     \n\t" \
+        "xor       %%rax, %%rax            \n\t" \
+        "movsxd    %[y], %%rcx             \n\t" \
+        "test      %%rcx, %%rcx            \n\t" \
+        "cmovnz    %%rdx, %%rax            \n\t" \
+        "inc       %%rcx                   \n\t" \
+        "add       %%rax, %%rdx            \n\t" \
+        "cmp       %[height], %%ecx        \n\t" \
+        "cmovz     %%rax, %%rdx            \n\t" \
+        "sub       %%rax, %%rsi            \n\t" \
+        "movsxd    %[i], %%rcx             \n\t" \
+        "sub       $0x10, %%rdi            \n\t" \
+        "sub       %%rsi, %%rdi            \n\t" \
+        "movd      %[thresh], %%xmm0        \n\t" \
+        "pshufd    $0, %%xmm0, %%xmm0      \n\t" \
+        "packssdw  %%xmm0, %%xmm0          \n\t" \
+        "packuswb  %%xmm0, %%xmm0          \n\t" \
+        ".align    0x10                   \n\t" \
+        "1:                                \n\t" \
+        "movdqu    -1(%%rsi), %%xmm2      \n\t" \
+        "movdqu    (%%rsi), %%xmm3          \n\t" \
+        "movdqu    1(%%rsi), %%xmm4       \n\t" \
+        "movdqu    -1(%%rsi), %%xmm5      \n\t" \
+        "movdqu    (%%rsi), %%xmm6          \n\t" \
+        "movdqu    1(%%rsi,%%rdx), %%xmm7 \n\t" \
+        "movdqa    %%xmm2, %%xmm1          \n\t" \
+        "pavgb     %%xmm4, %%xmm1          \n\t" \
+        "pavgb     %%xmm1, %%xmm3          \n\t" \
+        "movdqa    %%xmm5, %%xmm1          \n\t" \
+        "pavgb     %%xmm7, %%xmm1          \n\t" \
+        "pavgb     %%xmm1, %%xmm6          \n\t" \
+        "movdqa    %%xmm3, %%xmm1          \n\t" \
+        "psubusb   %%xmm6, %%xmm3          \n\t" \
+        "psubusb   %%xmm1, %%xmm6          \n\t" \
+        "por       %%xmm3, %%xmm6          \n\t" \
+        "movdqu    -1(%%rsi,%%rax), %%xmm1\n\t" \
+        "movdqu    1(%%rsi,%%rax), %%xmm3 \n\t" \
+        "pavgb     %%xmm2, %%xmm5          \n\t" \
+        "pavgb     %%xmm4, %%xmm7          \n\t" \
+        "pavgb     %%xmm5, %%xmm1          \n\t" \
+        "pavgb     %%xmm7, %%xmm3          \n\t" \
+        "movdqa    %%xmm1, %%xmm5          \n\t" \
+        "psubusb   %%xmm3, %%xmm1          \n\t" \
+        "psubusb   %%xmm5, %%xmm3          \n\t" \
+        "por       %%xmm3, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm2          \n\t" \
+        "paddusb   %%xmm1, %%xmm2          \n\t" \
+        "pmaxub    %%xmm6, %%xmm1          \n\t" \
+        "paddusb   %%xmm1, %%xmm2          \n\t" \
+        "movdqa    %%xmm2, %%xmm3          \n\t" \
+        "paddusb   %%xmm2, %%xmm2          \n\t" \
+        "paddusb   %%xmm2, %%xmm3          \n\t" \
+        "paddusb   %%xmm2, %%xmm2          \n\t" \
+        "pminub    %%xmm0, %%xmm2          \n\t" \
+        "add       $0x10, %%rsi            \n\t" \
+        "sub       $4, %%rcx               \n\t" \
+        "jb 	   20f                    \n\t" \
+        "movntdq   %%xmm2, (%%rsi,%%rdi)   \n\t" \
+        "jnz	   1b                      \n\t" \
+        "jmp	   21f                     \n\t" \
+        "20:                              \n\t" \
+        "test      $2, %%rcx               \n\t" \
+        "jz        22f                    \n\t" \
+        "movq      %%xmm2, (%%rsi,%%rdi)   \n\t" \
+        "test      $1, %%rcx               \n\t" \
+        "jz 	   21f                     \n\t" \
+        "add       $8, %%rsi               \n\t" \
+        "psrldq    $8, %%xmm2              \n\t" \
+        "22:                              \n\t" \
+        "movd      %%xmm2, (%%rsi,%%rdi)   \n\t" \
+        "21:                               \n\t" \
+    : \
+    : [psrc] "r" (psrc), [pdst] "r" (pdst), [src_pitch] "r" (src_pitch), [y] "r" (y), [height] "m" (height), [i] "r" (i), [thresh] "r" (thresh) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
 #endif
       pdst[0] = pdst[1];
       pdst[dst_row_size - 1] = pdst[dst_row_size - 2];
       psrc += src_pitch;
       pdst += dst_pitch;
     }
-  __asm sfence;
+  asm volatile("sfence\n\t" : : : "memory", "cc");
 }
 
 // WxH min: 1x12, mul: 1x1 (write 16x1)
@@ -272,173 +268,177 @@ void BlurR6(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
   ptmp2 = ptmp;
   // Horizontal Blur
   // WxH min: 1x1, mul: 1x1 (write 16x1)
-  if (g_cpuid & CPUF_SSSE3) // SSSE?
+  if (!(g_cpuid & CPUF_SSSE3)) // SSSE?
     // SSSE3 version (palignr, pshufb)
     for (int y = 0; y < height; y++)
     {
-      __asm {
-        mov	QSI, psrc2
-        mov	QDI, ptmp2
-        movsx_int	QCX, i
-        add	QSI, 10h
-        sub	QDI, QSI
-        movdqa	xmm6, [QSI - 10h]
-        movdqa	xmm5, xmm6
-        movdqa	xmm7, xmm6
-        pxor	xmm0, xmm0
-        pshufb	xmm5, xmm0
-        sub	QCX, 10h
-        jna	l0e
-        align	10h
-        l0 :
-        movdqa	xmm7, [QSI]
-          movdqa	xmm0, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm0, xmm5, 10
-          palignr	xmm2, xmm6, 6
-          pavgb	xmm0, xmm2
-          movdqa	xmm3, xmm6
-          movdqa	xmm4, xmm7
-          palignr	xmm3, xmm5, 11
-          palignr	xmm4, xmm6, 5
-          pavgb	xmm3, xmm4
-          pavgb	xmm0, xmm3
-          movdqa	xmm1, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm1, xmm5, 12
-          palignr	xmm2, xmm6, 4
-          pavgb	xmm1, xmm2
-          movdqa	xmm3, xmm6
-          movdqa	xmm4, xmm7
-          palignr	xmm3, xmm5, 13
-          palignr	xmm4, xmm6, 3
-          pavgb	xmm3, xmm4
-          pavgb	xmm1, xmm3
-          pavgb	xmm0, xmm1
-          movdqa	xmm1, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm1, xmm5, 14
-          palignr	xmm2, xmm6, 2
-          pavgb	xmm1, xmm2
-          movdqa	xmm3, xmm6
-          movdqa	xmm4, xmm7
-          palignr	xmm3, xmm5, 15
-          palignr	xmm4, xmm6, 1
-          pavgb	xmm3, xmm4
-          pavgb	xmm1, xmm3
-          pavgb	xmm1, xmm6
-          movdqa	xmm5, xmm6
-          movdqa	xmm6, xmm7
-          pavgb	xmm0, xmm1
-          pavgb	xmm0, xmm1
-          movntdq[QSI + QDI], xmm0
-          add	QSI, 10h
-          sub	QCX, 10h
-          ja	l0
-          l0e :
-        add	QCX, 0Fh
-          pxor	xmm0, xmm0
-          movd	xmm1, ecx
-          pshufb	xmm1, xmm0
-          pminub	xmm1, dq0toF // 0x0F0E..00
-          pshufb	xmm6, xmm1
-          psrldq	xmm7, 15
-          pshufb	xmm7, xmm0
-          movdqa	xmm0, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm0, xmm5, 10
-          palignr	xmm2, xmm6, 6
-          pavgb	xmm0, xmm2
-          movdqa	xmm3, xmm6
-          movdqa	xmm4, xmm7
-          palignr	xmm3, xmm5, 11
-          palignr	xmm4, xmm6, 5
-          pavgb	xmm3, xmm4
-          pavgb	xmm0, xmm3
-          movdqa	xmm1, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm1, xmm5, 12
-          palignr	xmm2, xmm6, 4
-          pavgb	xmm1, xmm2
-          movdqa	xmm3, xmm6
-          movdqa	xmm4, xmm7
-          palignr	xmm3, xmm5, 13
-          palignr	xmm4, xmm6, 3
-          pavgb	xmm3, xmm4
-          pavgb	xmm1, xmm3
-          pavgb	xmm0, xmm1
-          movdqa	xmm1, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm1, xmm5, 14
-          palignr	xmm2, xmm6, 2
-          pavgb	xmm1, xmm2
-          movdqa	xmm3, xmm6
-          movdqa	xmm4, xmm7
-          palignr	xmm3, xmm5, 15
-          palignr	xmm4, xmm6, 1
-          pavgb	xmm3, xmm4
-          pavgb	xmm1, xmm3
-          pavgb	xmm1, xmm6
-          movdqa	xmm5, xmm6
-          movdqa	xmm6, xmm7
-          pavgb	xmm0, xmm1
-          pavgb	xmm0, xmm1
-          movntdq[QSI + QDI], xmm0
-      }
+      asm volatile ( \
+        "mov       %[psrc2], %%rsi         \n\t" \
+        "mov       %[ptmp2], %%rdi         \n\t" \
+        "movsxd    %[i], %%rcx             \n\t" \
+        "add       $0x10, %%rsi            \n\t" \
+        "sub       %%rsi, %%rdi            \n\t" \
+        "movdqa    -0x10(%%rsi), %%xmm6   \n\t" \
+        "movdqa    %%xmm6, %%xmm5          \n\t" \
+        "movdqa    %%xmm6, %%xmm7          \n\t" \
+        "pxor      %%xmm0, %%xmm0          \n\t" \
+        "pshufb    %%xmm0, %%xmm5          \n\t" \
+        "sub       $0x10, %%rsi            \n\t" \
+        "jna        23f                    \n\t" \
+        ".align      0x10                   \n\t" \
+        "2:                               \n\t" \
+        "movdqa    (%%rsi), %%xmm7           \n\t" \
+        "movdqa    %%xmm6, %%xmm0          \n\t" \
+        "movdqa    %%xmm7, %%xmm2          \n\t" \
+        "palignr	$10, %%xmm0, %%xmm5     \n\t" \
+        "palignr	$6, %%xmm2, %%xmm6      \n\t" \
+        "pavgb     %%xmm2, %%xmm0          \n\t" \
+        "movdqa    %%xmm6, %%xmm3          \n\t" \
+        "movdqa    %%xmm7, %%xmm4          \n\t" \
+        "palignr	$11, %%xmm3, %%xmm5     \n\t" \
+        "palignr	$5, %%xmm4, %%xmm6      \n\t" \
+        "pavgb     %%xmm4, %%xmm3          \n\t" \
+        "pavgb     %%xmm3, %%xmm0          \n\t" \
+        "movdqa    %%xmm6, %%xmm1          \n\t" \
+        "movdqa    %%xmm7, %%xmm2          \n\t" \
+        "palignr	$12, %%xmm1, %%xmm5     \n\t" \
+        "palignr	$4, %%xmm2, %%xmm6      \n\t" \
+        "pavgb     %%xmm2, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm3          \n\t" \
+        "movdqa    %%xmm7, %%xmm4          \n\t" \
+        "palignr	$13, %%xmm3, %%xmm5     \n\t" \
+        "palignr	$3, %%xmm4, %%xmm6      \n\t" \
+        "pavgb     %%xmm4, %%xmm3          \n\t" \
+        "pavgb     %%xmm3, %%xmm1          \n\t" \
+        "pavgb     %%xmm1, %%xmm0          \n\t" \
+        "movdqa    %%xmm6, %%xmm1          \n\t" \
+        "movdqa    %%xmm7, %%xmm2          \n\t" \
+        "palignr	$14, %%xmm1, %%xmm5     \n\t" \
+        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "pavgb     %%xmm2, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm3          \n\t" \
+        "movdqa    %%xmm7, %%xmm4          \n\t" \
+        "palignr	$15, %%xmm3, %%xmm5     \n\t" \
+        "palignr	$1, %%xmm4, %%xmm6      \n\t" \
+        "pavgb     %%xmm4, %%xmm3          \n\t" \
+        "pavgb     %%xmm3, %%xmm1          \n\t" \
+        "pavgb     %%xmm6, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm5          \n\t" \
+        "movdqa    %%xmm7, %%xmm6          \n\t" \
+        "pavgb     %%xmm1, %%xmm0          \n\t" \
+        "pavgb     %%xmm1, %%xmm0          \n\t" \
+        "movntdq   %%xmm0, (%%rsi,%%rdi)   \n\t" \
+        "add       $0x10, %%rsi            \n\t" \
+        "sub       $0x10, %%rcx            \n\t" \
+        "ja        2b                     \n\t" \
+        "23:                             \n\t" \
+        "add       $0x0f, %%rcx            \n\t" \
+        "pxor      %%xmm0, %%xmm0          \n\t" \
+        "movd      %%ecx, %%xmm0           \n\t" \
+        "pshufb    %%xmm0, %%xmm1          \n\t" \
+        "pminub    %[dq0toF], %%xmm1       \n\t" \
+        "pshufb    %%xmm1, %%xmm6          \n\t" \
+        "psrldq    $15, %%xmm7             \n\t" \
+        "pshufb    %%xmm0, %%xmm7          \n\t" \
+        "movdqa    %%xmm6, %%xmm0          \n\t" \
+        "movdqa    %%xmm7, %%xmm2          \n\t" \
+        "palignr	$10, %%xmm0, %%xmm5     \n\t" \
+        "palignr	$6, %%xmm2, %%xmm6      \n\t" \
+        "pavgb     %%xmm2, %%xmm0          \n\t" \
+        "movdqa    %%xmm6, %%xmm3          \n\t" \
+        "movdqa    %%xmm7, %%xmm4          \n\t" \
+        "palignr	$11, %%xmm3, %%xmm5     \n\t" \
+        "palignr	$5, %%xmm4, %%xmm6      \n\t" \
+        "pavgb     %%xmm4, %%xmm3          \n\t" \
+        "pavgb     %%xmm3, %%xmm0          \n\t" \
+        "movdqa    %%xmm6, %%xmm1          \n\t" \
+        "movdqa    %%xmm7, %%xmm2          \n\t" \
+        "palignr	$12, %%xmm1, %%xmm5     \n\t" \
+        "palignr	$4, %%xmm2, %%xmm6      \n\t" \
+        "pavgb     %%xmm2, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm3          \n\t" \
+        "movdqa    %%xmm7, %%xmm4          \n\t" \
+        "palignr	$13, %%xmm3, %%xmm5     \n\t" \
+        "palignr	$3, %%xmm4, %%xmm6      \n\t" \
+        "pavgb     %%xmm4, %%xmm3          \n\t" \
+        "pavgb     %%xmm3, %%xmm1          \n\t" \
+        "pavgb     %%xmm1, %%xmm0          \n\t" \
+        "movdqa    %%xmm6, %%xmm1          \n\t" \
+        "movdqa    %%xmm7, %%xmm2          \n\t" \
+        "palignr	$14, %%xmm1, %%xmm5     \n\t" \
+        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "pavgb     %%xmm2, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm3          \n\t" \
+        "movdqa    %%xmm7, %%xmm4          \n\t" \
+        "palignr	$15, %%xmm3, %%xmm5     \n\t" \
+        "palignr	$1, %%xmm4, %%xmm6      \n\t" \
+        "pavgb     %%xmm4, %%xmm3          \n\t" \
+        "pavgb     %%xmm3, %%xmm1          \n\t" \
+        "pavgb     %%xmm6, %%xmm1          \n\t" \
+        "movdqa    %%xmm6, %%xmm5          \n\t" \
+        "movdqa    %%xmm7, %%xmm6          \n\t" \
+        "pavgb     %%xmm1, %%xmm0          \n\t" \
+        "pavgb     %%xmm1, %%xmm0          \n\t" \
+        "movntdq   %%xmm0, (%%rsi,%%rdi)   \n\t" \
+    : \
+    : [psrc2] "r" (psrc2), [ptmp2] "r" (ptmp2), [i] "r" (i), [dq0toF] "m" (dq0toF) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
-  else if (g_cpuid & CPUF_SSE2)
+  else if (!(g_cpuid & CPUF_SSE2))
     // SSE2 version
     // 6 left and right pixels are wrong
     for (int y = 0; y < height; y++)
     {
-      __asm {
-        mov	QSI, psrc2
-        mov	QDI, ptmp2
-        movsx_int	QCX, ia
-        sub	QDI, QSI
-        align	10h
-        ls0 :
-        movdqu	xmm6, [QSI - 6]
-          movdqu	xmm0, [QSI + 6]
-          pavgb	xmm6, xmm0
-          movdqu	xmm5, [QSI - 5]
-          movdqu	xmm7, [QSI + 5]
-          pavgb	xmm5, xmm7
-          movdqu	xmm4, [QSI - 4]
-          movdqu	xmm0, [QSI + 4]
-          pavgb	xmm4, xmm0
-          movdqu	xmm3, [QSI - 3]
-          movdqu	xmm7, [QSI + 3]
-          pavgb	xmm3, xmm7
-          movdqu	xmm2, [QSI - 2]
-          movdqu	xmm0, [QSI + 2]
-          pavgb	xmm2, xmm0
-          movdqu	xmm1, [QSI - 1]
-          movdqu	xmm7, [QSI + 1]
-          pavgb	xmm1, xmm7
-          movdqa	xmm0, [QSI]
-          pavgb	xmm6, xmm5
-          pavgb	xmm4, xmm3
-          pavgb	xmm2, xmm1
-          pavgb	xmm6, xmm4
-          pavgb	xmm2, xmm0
-          pavgb	xmm6, xmm2
-          pavgb	xmm6, xmm2
-          movntdq[QSI + QDI], xmm6
-          add	QSI, 10h
-          dec	QCX
-          jnz	ls0
-      }
+      asm volatile ( \
+        "mov       %[psrc2], %%rsi         \n\t" \
+        "mov       %[ptmp2], %%rdi         \n\t" \
+        "movsxd    %[ia], %%rcx             \n\t" \
+        "sub       %%rsi, %%rdi            \n\t" \
+        ".align    0x10                    \n\t" \
+        "3:                             \n\t" \
+        "movdqu    -6(%%rsi), %%xmm6       \n\t" \
+        "movdqu    6(%%rsi), %%xmm0        \n\t" \
+        "pavgb     %%xmm0, %%xmm6          \n\t" \
+        "movdqu    -5(%%rsi), %%xmm5       \n\t" \
+        "movdqu    5(%%rsi), %%xmm7        \n\t" \
+        "pavgb     %%xmm7, %%xmm5          \n\t" \
+        "movdqu    -4(%%rsi), %%xmm4       \n\t" \
+        "movdqu    4(%%rsi), %%xmm0        \n\t" \
+        "pavgb     %%xmm0, %%xmm4          \n\t" \
+        "movdqu    -3(%%rsi), %%xmm3       \n\t" \
+        "movdqu    3(%%rsi), %%xmm7        \n\t" \
+        "pavgb     %%xmm7, %%xmm3          \n\t" \
+        "movdqu    -2(%%rsi), %%xmm2       \n\t" \
+        "movdqu    2(%%rsi), %%xmm0        \n\t" \
+        "pavgb     %%xmm0, %%xmm2          \n\t" \
+        "movdqu    -1(%%rsi), %%xmm1       \n\t" \
+        "movdqu    1(%%rsi), %%xmm7        \n\t" \
+        "pavgb     %%xmm7, %%xmm1          \n\t" \
+        "movdqa    (%%rsi), %%xmm0          \n\t" \
+        "pavgb     %%xmm5, %%xmm6          \n\t" \
+        "pavgb     %%xmm3, %%xmm4          \n\t" \
+        "pavgb     %%xmm1, %%xmm2          \n\t" \
+        "pavgb     %%xmm4, %%xmm6          \n\t" \
+        "pavgb     %%xmm0, %%xmm2          \n\t" \
+        "pavgb     %%xmm2, %%xmm6          \n\t" \
+        "pavgb     %%xmm2, %%xmm6          \n\t" \
+        "movntdq   %%xmm6, (%%rsi,%%rdi)   \n\t" \
+        "add       $0x10, %%rsi            \n\t" \
+        "dec       %%rcx                   \n\t" \
+        "jnz       3b                     \n\t" \
+    : \
+    : [psrc2] "r" (psrc2), [ptmp2] "r" (ptmp2), [ia] "r" (ia) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
-  __asm sfence;
+    asm volatile("sfence\n\t" : : : "memory", "cc");
 
   // Vertical Blur
   // WxH min: 1x12, mul: 1x1 (write 16x1)
-  if (g_cpuid & CPUF_SSE2)
+  if (!(g_cpuid & CPUF_SSE2))
   {
     // SSE2 version
     int y;
@@ -446,125 +446,131 @@ void BlurR6(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
     ptmp2 = ptmp;
     for (y = 0; y < 6; y++)
     {
-      __asm {
-        movsx_int	QAX, tmp_pitch
-        mov	QSI, ptmp2
-        mov	QDI, psrc2
-        movsx_int QCX, ia
-        lea	QBX, [QAX + QAX * 2] // pitch*3
-        lea	QDX, [QBX + QAX * 2] // pitch*5
-        add	QDX, QSI
-        sub	QDI, QSI
-        align	10h
-        l1 :
-        movdqa	xmm0, [QSI]
-          movdqa	xmm1, [QSI + QAX * 1]
-          movdqa	xmm2, [QSI + QAX * 2]
-          movdqa	xmm3, [QSI + QBX * 1] // pitch*3, fixed 20170928
-          movdqa	xmm4, [QSI + QAX * 4]
-          movdqa	xmm5, [QDX]           // pitch*5
-          movdqa	xmm6, [QDX + QAX * 1] // pitch*6
-          pavgb	xmm6, xmm5
-          pavgb	xmm4, xmm3
-          pavgb	xmm2, xmm1
-          pavgb	xmm6, xmm4
-          pavgb	xmm2, xmm0
-          pavgb	xmm6, xmm2
-          pavgb	xmm6, xmm2
-          movntdq[QSI + QDI], xmm6
-          add	QSI, 10h
-          add	QDX, 10h
-          dec	QCX
-          jnz	l1
-      }
+      asm volatile ( \
+        "movsxd     %[tmp_pitch], %%rax      \n\t" \
+        "mov        %[ptmp2], %%rsi         \n\t" \
+        "mov        %[psrc2], %%rdi         \n\t" \
+        "movsxd     %[ia], %%rcx             \n\t" \
+        "lea        (%%rax,%%rax,2), %%rbx   \n\t" \
+        "lea        (%%rbx,%%rax,2), %%rdx   \n\t" \
+        "add        %%rsi, %%rdx            \n\t" \
+        "sub        %%rsi, %%rdi            \n\t" \
+        ".align     0x10                    \n\t" \
+        "4:                                \n\t" \
+        "movdqa     (%%rsi), %%xmm0         \n\t" \
+        "movdqa     (%%rsi,%%rax,1), %%xmm1 \n\t" \
+        "movdqa     (%%rsi,%%rax,2), %%xmm2 \n\t" \
+        "movdqa     (%%rsi,%%rbx,1), %%xmm3 \n\t" \
+        "movdqa     (%%rsi,%%rax,4), %%xmm4 \n\t" \
+        "movdqa     (%%rdx), %%xmm5         \n\t" \
+        "movdqa     (%%rsi,%%rdx,1), %%xmm6 \n\t" \
+        "pavgb      %%xmm5, %%xmm6          \n\t" \
+        "pavgb      %%xmm3, %%xmm4          \n\t" \
+        "pavgb      %%xmm1, %%xmm2          \n\t" \
+        "pavgb      %%xmm4, %%xmm6          \n\t" \
+        "pavgb      %%xmm0, %%xmm2          \n\t" \
+        "pavgb      %%xmm2, %%xmm6          \n\t" \
+        "pavgb      %%xmm2, %%xmm6          \n\t" \
+        "movntdq    %%xmm6, (%%rsi,%%rdi)   \n\t" \
+        "add        $0x10, %%rsi            \n\t" \
+        "add        $0x10, %%rdx            \n\t" \
+        "dec        %%rcx                   \n\t" \
+        "jnz        4b                     \n\t" \
+    : \
+    : [tmp_pitch] "r" (tmp_pitch), [ptmp2] "r" (ptmp2), [psrc2] "r" (psrc2), [ia] "r" (ia) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
     ptmp2 = ptmp;
     for (; y < height - 6; y++)
     {
-      __asm {
-        movsx_int	QAX, tmp_pitch
-        mov	QSI, ptmp2
-        mov	QDI, psrc2
-        movsx_int	QCX, ia
-        push	QBP
-        lea	QBP, [QAX + QAX * 2]
-        lea	QDX, [QBP + QAX * 2]
-        lea	QBX, [QSI + QDX * 2]
-        add	QDX, QSI
-        sub	QDI, QSI
-        align	10h
-        l2 :
-        movdqa	xmm6, [QSI]
-          pavgb	xmm6, [QBX + QAX * 2]
-          movdqa	xmm5, [QSI + QAX * 1]
-          pavgb	xmm5, [QBX + QAX * 1]
-          movdqa	xmm4, [QSI + QAX * 2]
-          pavgb	xmm4, [QBX]
-          movdqa	xmm3, [QSI + QBP * 1]
-          pavgb	xmm3, [QDX + QAX * 4]
-          movdqa	xmm2, [QSI + QAX * 4]
-          pavgb	xmm2, [QSI + QAX * 8]
-          movdqa	xmm1, [QDX]
-          pavgb	xmm1, [QDX + QAX * 2]
-          movdqa	xmm0, [QDX + QAX * 1]
-          pavgb	xmm6, xmm5
-          pavgb	xmm4, xmm3
-          pavgb	xmm2, xmm1
-          pavgb	xmm6, xmm4
-          pavgb	xmm2, xmm0
-          pavgb	xmm6, xmm2
-          pavgb	xmm6, xmm2
-          movntdq[QSI + QDI], xmm6
-          add	QSI, 10h
-          add	QDX, 10h
-          add	QBX, 10h
-          dec	QCX
-          jnz	l2
-          pop	QBP
-      }
+      asm volatile ( \
+        "movsxd     %[tmp_pitch], %%rax      \n\t" \
+        "mov        %[ptmp2], %%rsi         \n\t" \
+        "mov        %[psrc2], %%rdi         \n\t" \
+        "movsxd     %[ia], %%rcx             \n\t" \
+        "push       %%rbp                   \n\t" \
+        "lea        (%%rax,%%rax,2), %%rbp   \n\t" \
+        "lea        (%%rbp,%%rax,2), %%rdx   \n\t" \
+        "lea        (%%rsi,%%rdx,2), %%rbx   \n\t" \
+        "add        %%rsi, %%rdx            \n\t" \
+        "sub        %%rsi, %%rdi            \n\t" \
+        ".align     0x10                    \n\t" \
+        "5:                              \n\t" \
+        "movdqa     (%%rsi), %%xmm6         \n\t" \
+        "pavgb      (%%rbx,%%rax,2), %%xmm6 \n\t" \
+        "movdqa     (%%rsi,%%rax,1), %%xmm5 \n\t" \
+        "pavgb      (%%rbx,%%rax,1), %%xmm5 \n\t" \
+        "movdqa     (%%rsi,%%rax,2), %%xmm4 \n\t" \
+        "pavgb      (%%rbx), %%xmm4          \n\t" \
+        "movdqa     (%%rsi,%%rbp,1), %%xmm3 \n\t" \
+        "pavgb      (%%rdx,%%rax,4), %%xmm3 \n\t" \
+        "movdqa     (%%rsi,%%rax,4), %%xmm2 \n\t" \
+        "pavgb      (%%rsi,%%rax,8), %%xmm2 \n\t" \
+        "movdqa     (%%rdx), %%xmm1         \n\t" \
+        "pavgb      (%%rdx,%%rax,2), %%xmm1 \n\t" \
+        "movdqa     (%%rdx,%%rax,1), %%xmm0 \n\t" \
+        "pavgb      %%xmm5, %%xmm6          \n\t" \
+        "pavgb      %%xmm3, %%xmm4          \n\t" \
+        "pavgb      %%xmm1, %%xmm2          \n\t" \
+        "pavgb      %%xmm4, %%xmm6          \n\t" \
+        "pavgb      %%xmm0, %%xmm2          \n\t" \
+        "pavgb      %%xmm2, %%xmm6          \n\t" \
+        "pavgb      %%xmm2, %%xmm6          \n\t" \
+        "movntdq    %%xmm6, (%%rsi,%%rdi)   \n\t" \
+        "add        $0x10, %%rsi            \n\t" \
+        "add        $0x10, %%rdx            \n\t" \
+        "add        $0x10, %%rbx            \n\t" \
+        "dec        %%rcx                   \n\t" \
+        "jnz        5b                      \n\t" \
+        "pop        %%rbp                   \n\t" \
+    : \
+    : [tmp_pitch] "r" (tmp_pitch), [ptmp2] "r" (ptmp2), [psrc2] "r" (psrc2), [ia] "r" (ia) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
     for (; y < height; y++)
     {
-      __asm {
-        movsx_int	QAX, tmp_pitch
-        mov	QSI, ptmp2
-        mov	QDI, psrc2
-        movsx_int	QCX, ia
-        lea	QBX, [QAX + QAX * 2] // pitch*3
-        lea	QDX, [QBX + QAX * 2] // pitch*5
-        add	QDX, QSI
-        sub	QDI, QSI
-        align	10h
-        l3 :
-        movdqa	xmm6, [QSI]
-          movdqa	xmm5, [QSI + QAX * 1]
-          movdqa	xmm4, [QSI + QAX * 2]
-          movdqa	xmm3, [QSI + QBX * 1] // pitch*3
-          movdqa	xmm2, [QSI + QAX * 4]
-          movdqa	xmm1, [QDX]           // pitch*5
-          movdqa	xmm0, [QDX + QAX * 1] // pitch*6
-          pavgb	xmm6, xmm5
-          pavgb	xmm4, xmm3
-          pavgb	xmm2, xmm1
-          pavgb	xmm6, xmm4
-          pavgb	xmm2, xmm0
-          pavgb	xmm6, xmm2
-          pavgb	xmm6, xmm2
-          movntdq[QSI + QDI], xmm6
-          add	QSI, 10h
-          add	QDX, 10h
-          dec	QCX
-          jnz	l3
-      }
+      asm volatile ( \
+        "movsxd     %[tmp_pitch], %%rax     \n\t" \
+        "mov        %[ptmp2], %%rsi         \n\t" \
+        "mov        %[psrc2], %%rdi         \n\t" \
+        "movsxd     %[ia], %%rcx            \n\t" \
+        "lea        (%%rax,%%rax,2), %%rbx  \n\t" \
+        "lea        (%%rbx,%%rax,2), %%rdx  \n\t" \
+        "add        %%rsi, %%rdx            \n\t" \
+        "sub        %%rsi, %%rdi            \n\t" \
+        ".align     0x10                    \n\t" \
+        "6:                                 \n\t" \
+        "movdqa     (%%rsi), %%xmm6         \n\t" \
+        "movdqa     (%%rsi,%%rax,1), %%xmm5 \n\t" \
+        "movdqa     (%%rsi,%%rax,2), %%xmm4 \n\t" \
+        "movdqa     (%%rsi,%%rbx,1), %%xmm3 \n\t" \
+        "movdqa     (%%rsi,%%rax,4), %%xmm2 \n\t" \
+        "movdqa     (%%rdx), %%xmm1         \n\t" \
+        "movdqa     (%%rdx,%%rax,1), %%xmm0 \n\t" \
+        "pavgb      %%xmm5, %%xmm6          \n\t" \
+        "pavgb      %%xmm3, %%xmm4          \n\t" \
+        "pavgb      %%xmm1, %%xmm2          \n\t" \
+        "pavgb      %%xmm4, %%xmm6          \n\t" \
+        "pavgb      %%xmm0, %%xmm2          \n\t" \
+        "pavgb      %%xmm2, %%xmm6          \n\t" \
+        "pavgb      %%xmm2, %%xmm6          \n\t" \
+        "movntdq    %%xmm6, (%%rsi,%%rdi)   \n\t" \
+        "add        $0x10, %%rsi            \n\t" \
+        "add        $0x10, %%rdx            \n\t" \
+        "dec        %%rcx                   \n\t" \
+        "jnz        6b                      \n\t" \
+    : \
+    : [tmp_pitch] "r" (tmp_pitch), [ptmp2] "r" (ptmp2), [psrc2] "r" (psrc2), [ia] "r" (ia) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
   }
-  __asm sfence;
+  asm volatile("sfence\n\t" : : : "memory", "cc");
 }
 
 // WxH min: 1x1, mul: 1x1 (write 16x1)
@@ -577,7 +583,7 @@ void BlurR2(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
   unsigned char *ptmp = tmp->GetWritePtr(plane);
   const int height = src->GetHeight() >> src_vi.GetPlaneHeightSubsampling(plane);
   const int i = src->GetRowSize() >> src_vi.GetPlaneWidthSubsampling(plane);
-  const int ia = i + 0xF & ~0xF;
+  const int ia = (i + 0xF) & ~0xF;
   unsigned char *psrc2, *ptmp2;
 
   psrc2 = psrc;
@@ -588,109 +594,113 @@ void BlurR2(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
     // SSSE3 version (palignr, pshufb)
     for (int y = 0; y < height; y++)
     {
-      __asm {
-        mov	QSI, psrc2
-        mov	QDI, ptmp2
-        movsx_int	QCX, i
-        add	QSI, 10h
-        sub	QDI, QSI
-        movdqa	xmm4, dq0toF
-        movdqa	xmm6, [QSI - 10h]
-        movdqa	xmm5, xmm6
-        movdqa	xmm7, xmm6
-        pxor	xmm0, xmm0
-        pshufb	xmm5, xmm0
-        sub	QCX, 10h
-        jna	l1e
-        align	10h
-        l1 :
-        movdqa	xmm7, [QSI]
-          movdqa	xmm0, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm0, xmm5, 14
-          palignr	xmm2, xmm6, 2
-          pavgb	xmm0, xmm2
-          movdqa	xmm1, xmm6
-          movdqa	xmm3, xmm7
-          palignr	xmm1, xmm5, 15
-          palignr	xmm3, xmm6, 1
-          pavgb	xmm0, xmm6
-          pavgb	xmm1, xmm3
-          pavgb	xmm0, xmm6
-          movdqa	xmm5, xmm6
-          movdqa	xmm6, xmm7
-          pavgb	xmm0, xmm1
-          movntdq[QSI + QDI], xmm0
-          add	QSI, 10h
-          sub	QCX, 10h
-          ja	l1
-          l1e :
-        add	QCX, 0Fh
-          pxor	xmm0, xmm0
-          movd	xmm1, ecx
-          pshufb	xmm1, xmm0
-          pminub	xmm1, xmm4 // 0x0F0E..00
-          pshufb	xmm6, xmm1
-          psrldq	xmm7, 15
-          pshufb	xmm7, xmm0
-          movdqa	xmm0, xmm6
-          movdqa	xmm2, xmm7
-          palignr	xmm0, xmm5, 14
-          palignr	xmm2, xmm6, 2
-          pavgb	xmm0, xmm2
-          movdqa	xmm1, xmm6
-          movdqa	xmm3, xmm7
-          palignr	xmm1, xmm5, 15
-          palignr	xmm3, xmm6, 1
-          pavgb	xmm0, xmm6
-          pavgb	xmm1, xmm3
-          pavgb	xmm0, xmm6
-          movdqa	xmm5, xmm6
-          movdqa	xmm6, xmm7
-          pavgb	xmm0, xmm1
-          movntdq[QSI + QDI], xmm0
-      }
+      asm volatile ( \
+        "mov        %[psrc2], %%rsi         \n\t" \
+        "mov        %[ptmp2], %%rdi         \n\t" \
+        "movsxd     %[i], %%rcx             \n\t" \
+        "add        $0x10, %%rsi            \n\t" \
+        "sub        %%rsi, %%rdi            \n\t" \
+        "movdqa     %[dq0toF], %%xmm4       \n\t" \
+        "movdqa     -0x10(%%rsi), %%xmm6    \n\t" \
+        "movdqa     %%xmm6, %%xmm5          \n\t" \
+        "movdqa     %%xmm6, %%xmm7          \n\t" \
+        "pxor       %%xmm0, %%xmm0          \n\t" \
+        "pshufb     %%xmm0, %%xmm5          \n\t" \
+        "sub        $0x10, %%rcx            \n\t" \
+        "jna        24f                     \n\t" \
+        ".align     0x10                    \n\t" \
+        "7:                                 \n\t" \
+        "movdqa     (%%rsi), %%xmm7         \n\t" \
+        "movdqa     %%xmm6, %%xmm0          \n\t" \
+        "movdqa     %%xmm7, %%xmm2          \n\t" \
+        "palignr	$14, %%xmm0, %%xmm5     \n\t" \
+        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "pavgb      %%xmm2, %%xmm0          \n\t" \
+        "movdqa     %%xmm6, %%xmm1          \n\t" \
+        "movdqa     %%xmm7, %%xmm3          \n\t" \
+        "palignr	$15, %%xmm1, %%xmm5     \n\t" \
+        "palignr	$1, %%xmm3, %%xmm6      \n\t" \
+        "pavgb      %%xmm6, %%xmm0          \n\t" \
+        "pavgb      %%xmm3, %%xmm1          \n\t" \
+        "pavgb      %%xmm6, %%xmm0          \n\t" \
+        "movdqa     %%xmm6, %%xmm5          \n\t" \
+        "movdqa     %%xmm7, %%xmm6          \n\t" \
+        "pavgb      %%xmm1, %%xmm0          \n\t" \
+        "movntdq    %%xmm0, (%%rsi,%%rdi)   \n\t" \
+        "add        $0x10, %%rsi            \n\t" \
+        "sub        $0x10, %%rcx            \n\t" \
+        "ja         7b                      \n\t" \
+        "24:                                \n\t" \
+        "add        $0x0f, %%rcx            \n\t" \
+        "pxor       %%xmm0, %%xmm0          \n\t" \
+        "movd       %%ecx, %%xmm1           \n\t" \
+        "pshufb     %%xmm0, %%xmm1          \n\t" \
+        "pminub     %%xmm4, %%xmm1          \n\t" \
+        "pshufb     %%xmm1, %%xmm6          \n\t" \
+        "psrldq     $15, %%xmm7             \n\t" \
+        "pshufb     %%xmm0, %%xmm7          \n\t" \
+        "movdqa     %%xmm6, %%xmm0          \n\t" \
+        "movdqa     %%xmm7, %%xmm2          \n\t" \
+        "palignr	$14, %%xmm0, %%xmm5     \n\t" \
+        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "pavgb      %%xmm2, %%xmm0          \n\t" \
+        "movdqa     %%xmm6, %%xmm1          \n\t" \
+        "movdqa     %%xmm7, %%xmm3          \n\t" \
+        "palignr	$15, %%xmm1, %%xmm5     \n\t" \
+        "palignr	$1, %%xmm3, %%xmm6      \n\t" \
+        "pavgb      %%xmm6, %%xmm0          \n\t" \
+        "pavgb      %%xmm3, %%xmm1          \n\t" \
+        "pavgb      %%xmm6, %%xmm0          \n\t" \
+        "movdqa     %%xmm6, %%xmm5          \n\t" \
+        "movdqa     %%xmm7, %%xmm6          \n\t" \
+        "pavgb      %%xmm1, %%xmm0          \n\t" \
+        "movntdq    %%xmm0, (%%rsi,%%rdi)   \n\t" \
+    : \
+    : [ptmp2] "r" (ptmp2), [psrc2] "r" (psrc2), [i] "r" (i), [dq0toF] "m" (dq0toF) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
-  else if (g_cpuid & CPUF_SSE2)
+  else if (!(g_cpuid & CPUF_SSE2))
     // SSE2 version
     // 2 left and right pixels are wrong
     for (int y = 0; y < height; y++)
     {
-      __asm {
-        mov	QSI, psrc2
-        mov	QDI, ptmp2
-        movsx_int	QCX, ia
-        add	QSI, QCX
-        add	QDI, QCX
-        neg	QCX
-        align	10h
-        ls1 :
-        movdqu	xmm0, [QCX + QSI - 2]
-          movdqu	xmm4, [QCX + QSI + 2]
-          pavgb	xmm0, xmm4
-          movdqu	xmm1, [QCX + QSI - 1]
-          movdqu	xmm3, [QCX + QSI + 1]
-          pavgb	xmm1, xmm3
-          movdqa	xmm2, [QCX + QSI]
-          pavgb	xmm0, xmm2
-          pavgb	xmm0, xmm2
-          pavgb	xmm0, xmm1
-          movntdq[QCX + QDI], xmm0
-          add	QCX, 10h
-          jnz	ls1
-      }
+      asm volatile ( \
+        "mov        %[psrc2], %%rsi         \n\t" \
+        "mov        %[ptmp2], %%rdi         \n\t" \
+        "movsxd     %[ia], %%rcx            \n\t" \
+        "add        %%rcx, %%rsi            \n\t" \
+        "add        %%rcx, %%rdi            \n\t" \
+        "neg        %%rcx                   \n\t" \
+        ".align     0x10                    \n\t" \
+        "8:                                 \n\t" \
+        "movdqu     -2(%%rcx,%%rsi), %%xmm0 \n\t" \
+        "movdqu     2(%%rcx,%%rsi), %%xmm4  \n\t" \
+        "pavgb      %%xmm4, %%xmm0          \n\t" \
+        "movdqu     -1(%%rcx,%%rsi), %%xmm1 \n\t" \
+        "movdqu     1(%%rcx,%%rsi), %%xmm3  \n\t" \
+        "pavgb      %%xmm3, %%xmm1          \n\t" \
+        "movdqa     (%%rcx,%%rsi), %%xmm2   \n\t" \
+        "pavgb      %%xmm2, %%xmm0          \n\t" \
+        "pavgb      %%xmm2, %%xmm0          \n\t" \
+        "pavgb      %%xmm1, %%xmm0          \n\t" \
+        "movntdq    %%xmm0, (%%rcx,%%rdi)   \n\t" \
+        "add        $0x10, %%rcx            \n\t" \
+        "jnz        8b                      \n\t" \
+    : \
+    : [ptmp2] "r" (ptmp2), [psrc2] "r" (psrc2), [ia] "r" (ia) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
-  __asm sfence;
+  asm volatile("sfence\n\t" : : : "memory", "cc");
 
   psrc2 = psrc;
   ptmp2 = ptmp;
   // Vertical Blur
   // WxH min: 1x1, mul: 1x1 (write 16x1)
-  if (g_cpuid & CPUF_SSE2)
+  if (!(g_cpuid & CPUF_SSE2))
     // SSE2 version
     for (int y = 0; y < height; y++)
     {
@@ -698,36 +708,38 @@ void BlurR2(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
       int tmp_pitchp2 = y > 1 ? tmp_pitchp1 * 2 : tmp_pitchp1;
       int tmp_pitchn1 = y < height - 1 ? tmp_pitch : 0;
       int tmp_pitchn2 = y < height - 2 ? tmp_pitchn1 * 2 : tmp_pitchn1;
-      __asm {
-        push	QBP
-        mov	QSI, ptmp2
-        mov	QDI, psrc2
-        movsx_int	QCX, ia
-        movsx_int	QAX, tmp_pitchp2
-        movsx_int	QDX, tmp_pitchn2
-        movsx_int	QBX, tmp_pitchp1
-        movsx_int	QBP, tmp_pitchn1
-        sub	QDI, QSI
-        align	10h
-        l2 :
-        movdqa	xmm0, [QSI + QAX]
-          pavgb	xmm0, [QSI + QDX]
-          movdqa	xmm1, [QSI + QBX]
-          pavgb	xmm1, [QSI + QBP]
-          movdqa	xmm2, [QSI]
-          pavgb	xmm0, xmm2
-          pavgb	xmm0, xmm2
-          pavgb	xmm0, xmm1
-          movntdq[QSI + QDI], xmm0
-          add	QSI, 10h
-          sub	QCX, 10h
-          jnz	l2
-          pop	QBP
-      }
+      asm volatile ( \
+        "push       %%rbp                   \n\t" \
+        "mov        %[ptmp2], %%rsi         \n\t" \
+        "mov        %[psrc2], %%rdi         \n\t" \
+        "movsxd     %[ia], %%rcx            \n\t" \
+        "movsxd     %[tmp_pitchp2], %%rax   \n\t" \
+        "movsxd     %[tmp_pitchn2], %%rdx   \n\t" \
+        "movsxd     %[tmp_pitchp1], %%rbx   \n\t" \
+        "movsxd     %[tmp_pitchn1], %%rbp   \n\t" \
+        "sub        %%rsi, %%rdi            \n\t" \
+        ".align     0x10                    \n\t" \
+        "9:                                 \n\t" \
+        "movdqa     (%%rsi,%%rax), %%xmm0   \n\t" \
+        "pavgb      (%%rsi,%%rdx), %%xmm0   \n\t" \
+        "movdqa     (%%rsi,%%rbx), %%xmm1   \n\t" \
+        "pavgb      (%%rsi,%%rbp), %%xmm1   \n\t" \
+        "movdqa     (%%rsi), %%xmm2         \n\t" \
+        "pavgb      %%xmm2, %%xmm0          \n\t" \
+        "pavgb      %%xmm2, %%xmm0          \n\t" \
+        "pavgb      %%xmm1, %%xmm0          \n\t" \
+        "movntdq    %%xmm0, (%%rsi,%%rdi)   \n\t" \
+        "add        $0x10, %%rsi            \n\t" \
+        "sub        $0x10, %%rcx            \n\t" \
+        "jnz        9b                      \n\t" \
+        "pop        %%rbp                   \n\t" \
+    : \
+    : [ptmp2] "r" (ptmp2), [psrc2] "r" (psrc2), [ia] "r" (ia), [tmp_pitchp2] "r" (tmp_pitchp2), [tmp_pitchn2] "r" (tmp_pitchn2), [tmp_pitchp1] "r" (tmp_pitchp1), [tmp_pitchn1] "r" (tmp_pitchn1) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
       psrc2 += src_pitch;
       ptmp2 += tmp_pitch;
     }
-  __asm sfence;
+  asm volatile("sfence\n\t" : : : "memory", "cc");
 }
 
 void GuideChroma(PVideoFrame &src, PVideoFrame &dst, const VideoInfo &src_vi, const VideoInfo &dst_vi, bool cplace_mpeg2_flag)
@@ -766,57 +778,59 @@ void GuideChroma(PVideoFrame &src, PVideoFrame &dst, const VideoInfo &src_vi, co
     // MPEG-1
     else
     {
-      if (g_cpuid & CPUF_SSE2)
+      if (!(g_cpuid & CPUF_SSE2))
       {
         // SSE2 version
         for (int y = 0; y < height; y++)
         {
-          __asm {
-            movsx_int	QCX, i
-            mov	QSI, py
-            movsx_int	QAX, pitch_y
-            mov	QDX, pu
-            sub	QSI, QCX
-            sub	QSI, QCX
-            add	QAX, QSI
-            sub	QDX, QCX
-            sub	QDX, 10h
-            pcmpeqw	xmm7, xmm7
-            psrlw	xmm7, 8
-            align	10h
-            l :
-            movdqa	xmm0, [QSI + QCX * 2]
-              movdqa	xmm2, [QSI + QCX * 2 + 10h]
-              movdqa	xmm1, xmm0
-              movdqa	xmm3, xmm2
-              pand	xmm0, xmm7
-              pand	xmm2, xmm7
-              packuswb	xmm0, xmm2
-              psrlw	xmm1, 8
-              psrlw	xmm3, 8
-              packuswb	xmm1, xmm3
-              pavgb	xmm0, xmm1
-              movdqa	xmm1, [QAX + QCX * 2]
-              movdqa	xmm3, [QAX + QCX * 2 + 10h]
-              movdqa	xmm2, xmm1
-              movdqa	xmm4, xmm3
-              pand	xmm1, xmm7
-              pand	xmm3, xmm7
-              packuswb	xmm1, xmm3
-              psrlw	xmm2, 8
-              psrlw	xmm4, 8
-              packuswb	xmm2, xmm4
-              pavgb	xmm1, xmm2
-              pavgb	xmm0, xmm1
-              add	QCX, 10h
-              jg	ls
-              movntdq[QCX + QDX], xmm0
-              jnz	l
-              jmp	lx
-              ls :
-            movq	qword ptr[QCX + QDX], xmm0
-              lx :
-          }
+          asm volatile ( \
+            "movsxd     %[i], %%rcx             \n\t" \
+            "mov        %[py], %%rsi            \n\t" \
+            "movsxd     %[pitch_y], %%rax       \n\t" \
+            "mov        %[pu], %%rdx            \n\t" \
+            "sub        %%rcx, %%rsi            \n\t" \
+            "sub        %%rcx, %%rsi            \n\t" \
+            "add        %%rsi, %%rax            \n\t" \
+            "sub        %%rcx, %%rdx            \n\t" \
+            "sub        $0x10, %%rdx            \n\t" \
+            "pcmpeqw    %%xmm7, %%xmm7          \n\t" \
+            "psrlw      $8, %%xmm7              \n\t" \
+            ".align     0x10                    \n\t" \
+            "10:                                \n\t" \
+            "movdqa     (%%rsi,%%rcx,2), %%xmm0 \n\t" \
+            "movdqa     0x10(%%rsi,%%rcx,2), %%xmm2 \n\t" \
+            "movdqa     %%xmm0, %%xmm1          \n\t" \
+            "movdqa     %%xmm2, %%xmm3          \n\t" \
+            "pand       %%xmm7, %%xmm0          \n\t" \
+            "pand       %%xmm7, %%xmm2          \n\t" \
+            "packuswb   %%xmm2, %%xmm0          \n\t" \
+            "psrlw      $8, %%xmm1              \n\t" \
+            "psrlw      $8, %%xmm3              \n\t" \
+            "packuswb   %%xmm3, %%xmm1          \n\t" \
+            "pavgb      %%xmm1, %%xmm0          \n\t" \
+            "movdqa     (%%rax,%%rcx,2), %%xmm1 \n\t" \
+            "movdqa     0x10(%%rax,%%rcx,2), %%xmm3 \n\t" \
+            "movdqa     %%xmm1, %%xmm2          \n\t" \
+            "movdqa     %%xmm3, %%xmm4          \n\t" \
+            "pand       %%xmm7, %%xmm1          \n\t" \
+            "pand       %%xmm7, %%xmm3          \n\t" \
+            "packuswb   %%xmm3, %%xmm1          \n\t" \
+            "psrlw      $8, %%xmm2              \n\t" \
+            "psrlw      $8, %%xmm4              \n\t" \
+            "packuswb   %%xmm4, %%xmm2          \n\t" \
+            "pavgb      %%xmm2, %%xmm1          \n\t" \
+            "pavgb      %%xmm1, %%xmm0          \n\t" \
+            "add        $0x10, %%rcx            \n\t" \
+            "jg         25f                     \n\t" \
+            "movntdq    %%xmm0, (%%rcx,%%rdx)   \n\t" \
+            "jnz        10b                     \n\t" \
+            "jmp        26f                     \n\t" \
+            "25:                                \n\t" \
+            "movq       %%xmm0, (%%rcx,%%rdx)   \n\t" \
+            "26:                                \n\t" \
+          : \
+          : [i] "r" (i), [py] "r" (py), [pitch_y] "r" (pitch_y), [pu] "r" (pu) \
+          : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
           py += pitch_y * 2;
           pu += pitch_uv;
         }
@@ -848,44 +862,46 @@ void GuideChroma(PVideoFrame &src, PVideoFrame &dst, const VideoInfo &src_vi, co
     // MPEG-1
     else
     {
-      if (g_cpuid & CPUF_SSE2)
+      if (!(g_cpuid & CPUF_SSE2))
       {
         // SSE2 version
         for (int y = 0; y < height; y++)
         {
-          __asm {
-            movsx_int	QCX, i 
-            mov	QSI, py
-            movsx_int	QAX, pitch_y 
-            mov	QDX, pu
-            sub	QSI, QCX
-            sub	QSI, QCX
-            sub	QDX, QCX
-            sub	QDX, 10h
-            pcmpeqw	xmm7, xmm7
-            psrlw	xmm7, 8
-            align	10h
-            l422 :
-            movdqa	xmm0, [QSI + QCX * 2]
-              movdqa	xmm2, [QSI + QCX * 2 + 10h]
-              movdqa	xmm1, xmm0
-              movdqa	xmm3, xmm2
-              pand	xmm0, xmm7
-              pand	xmm2, xmm7
-              packuswb	xmm0, xmm2
-              psrlw	xmm1, 8
-              psrlw	xmm3, 8
-              packuswb	xmm1, xmm3
-              pavgb	xmm0, xmm1
-              add	QCX, 10h
-              jg	ls422
-              movntdq[QCX + QDX], xmm0
-              jnz	l422
-              jmp	lx422
-              ls422 :
-            movq	qword ptr[QCX + QDX], xmm0
-              lx422 :
-          }
+          asm volatile ( \
+            "movsxd     %[i], %%rcx             \n\t" \
+            "mov        %[py], %%rsi            \n\t" \
+            "movsxd     %[pitch_y], %%rax       \n\t" \
+            "mov        %[pu], %%rdx            \n\t" \
+            "sub        %%rcx, %%rsi            \n\t" \
+            "sub        %%rcx, %%rsi            \n\t" \
+            "sub        %%rcx, %%rdx            \n\t" \
+            "sub        $0x10, %%rdx            \n\t" \
+            "pcmpeqw    %%xmm7, %%xmm7          \n\t" \
+            "psrlw      $8, %%xmm7              \n\t" \
+            ".align     0x10                    \n\t" \
+            "11:                                \n\t" \
+            "movdqa     (%%rsi,%%rcx,2), %%xmm0 \n\t" \
+            "movdqa     0x10(%%rsi,%%rcx,2), %%xmm2 \n\t" \
+            "movdqa     %%xmm0, %%xmm1          \n\t" \
+            "movdqa     %%xmm2, %%xmm3          \n\t" \
+            "pand       %%xmm7, %%xmm0          \n\t" \
+            "pand       %%xmm7, %%xmm2          \n\t" \
+            "packuswb   %%xmm2, %%xmm0          \n\t" \
+            "psrlw      $8, %%xmm1              \n\t" \
+            "psrlw      $8, %%xmm3              \n\t" \
+            "packuswb   %%xmm3, %%xmm1          \n\t" \
+            "pavgb      %%xmm1, %%xmm0          \n\t" \
+            "add        $0x10, %%rcx            \n\t" \
+            "jg         27f                     \n\t" \
+            "movntdq    %%xmm0, (%%rcx,%%rdx)   \n\t" \
+            "jnz        11b                     \n\t" \
+            "jmp        28f                     \n\t" \
+            "27:                                \n\t" \
+            "movq       %%xmm0, (%%rcx,%%rdx)   \n\t" \
+            "28:                                \n\t" \
+          : \
+          : [i] "r" (i), [py] "r" (py), [pitch_y] "r" (pitch_y), [pu] "r" (pu) \
+          : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%rdx", "%ecx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" );
           py += pitch_y;
           pu += pitch_uv;
         }
@@ -907,7 +923,7 @@ void GuideChroma(PVideoFrame &src, PVideoFrame &dst, const VideoInfo &src_vi, co
     assert(false);
     throw "aWarpSharp2: Unsupported colorspace.";
   }
-  __asm sfence;
+  asm volatile("sfence\n\t" : : : "memory", "cc");
 }
 
 #pragma optimize("", on)
@@ -970,8 +986,8 @@ void CopyPlane(PVideoFrame &src, PVideoFrame &dst, int plane, const VideoInfo &d
 
 void CheckParams(IScriptEnvironment *env, const char *name, bool yuvPlanar, int thresh, int blur_type, int depth, int depthC, int chroma)
 {
-  if (!(g_cpuid & CPUF_SSE2))
-    env->ThrowError("%s: SSE2 capable CPU is required", name);
+  //if (!(g_cpuid & CPUF_SSE2))
+    //env->ThrowError("%s: SSE2 capable CPU is required", name);
   if (!yuvPlanar)
     env->ThrowError("%s: Planar YUV input is required", name);
   if (thresh < 0 || thresh > 255)
@@ -1084,8 +1100,8 @@ PVideoFrame __stdcall aWarpSharp::GetFrame(int n, IScriptEnvironment *env)
     }
   }
 
-  if (!(g_cpuid & CPUF_SSE2))
-    __asm emms;
+  //if (!(g_cpuid & CPUF_SSE2))
+    //asm volatile("emms\n\t" : : : "memory", "cc");
 
   return dst;
 }
@@ -1153,8 +1169,8 @@ PVideoFrame __stdcall aSobel::GetFrame(int n, IScriptEnvironment *env)
     break;
   }
 
-  if (!(g_cpuid & CPUF_SSE2))
-    __asm emms;
+  //if (!(g_cpuid & CPUF_SSE2))
+    //asm volatile("emms\n\t" : : : "memory", "cc");
 
   return dst;
 }
@@ -1219,8 +1235,8 @@ PVideoFrame __stdcall aBlur::GetFrame(int n, IScriptEnvironment *env)
     break;
   }
 
-  if (!(g_cpuid & CPUF_SSE2))
-    __asm emms;
+  //if (!(g_cpuid & CPUF_SSE2))
+    //asm volatile("emms\n\t" : : : "memory", "cc");
 
   return src;
 }
@@ -1243,7 +1259,7 @@ public:
     bits_per_pixel = vi.BitsPerComponent();
 
     const VideoInfo &vi2 = edges->GetVideoInfo();
-    if (depthC == NULL)
+    if (depthC == 0)
       depthC = vi.Is444() ? depth : depth / 2;
     if (vi.IsY())
       chroma = 1;
@@ -1319,8 +1335,8 @@ PVideoFrame __stdcall aWarp::GetFrame(int n, IScriptEnvironment *env)
     break;
   }
 
-  if (!(g_cpuid & CPUF_SSE2))
-    __asm emms;
+  //if (!(g_cpuid & CPUF_SSE2))
+    //asm volatile("emms\n\t" : : : "memory", "cc");
 
   return dst;
 }
@@ -1343,7 +1359,7 @@ public:
     bits_per_pixel = vi.BitsPerComponent();
 
     const VideoInfo &vi2 = edges->GetVideoInfo();
-    if (depthC == NULL)
+    if (depthC == 0)
       depthC = vi.Is444() ? depth : depth / 2;
     if (vi.IsY())
       chroma = 1;
@@ -1420,8 +1436,8 @@ PVideoFrame __stdcall aWarp4::GetFrame(int n, IScriptEnvironment *env)
     break;
   }
 
-  if (!(g_cpuid & CPUF_SSE2))
-    __asm emms;
+  //if (!(g_cpuid & CPUF_SSE2))
+    //asm volatile("emms\n\t" : : : "memory", "cc");
 
   return dst;
 }
@@ -1438,7 +1454,7 @@ AVSValue __cdecl Create_aWarpSharp(AVSValue args, void *user_data, IScriptEnviro
   switch ((intptr_t)user_data)
   {
   case 0:
-    return new aWarpSharp(args[0].AsClip(), args[1].AsInt(0x80), args[2].AsInt(args[3].AsInt(0) ? 3 : 2), args[3].AsInt(0), args[4].AsInt(16), args[5].AsInt(4), args[6].AsInt(NULL), is_cplace_mpeg2(args, 7), env);
+    return new aWarpSharp(args[0].AsClip(), args[1].AsInt(0x80), args[2].AsInt(args[3].AsInt(0) ? 3 : 2), args[3].AsInt(0), args[4].AsInt(16), args[5].AsInt(4), args[6].AsInt(0), is_cplace_mpeg2(args, 7), env);
   case 1:
   {
     const int type = args[5].AsInt(2) != 2;
@@ -1452,11 +1468,11 @@ AVSValue __cdecl Create_aWarpSharp(AVSValue args, void *user_data, IScriptEnviro
   case 3:
     return new aBlur(args[0].AsClip(), args[1].AsInt(args[2].AsInt(1) ? 3 : 2), args[2].AsInt(1), args[3].AsInt(1), env);
   case 4:
-    return new aWarp(args[0].AsClip(), args[1].AsClip(), args[2].AsInt(3), args[3].AsInt(4), args[4].AsInt(NULL), is_cplace_mpeg2(args, 5), env);
+    return new aWarp(args[0].AsClip(), args[1].AsClip(), args[2].AsInt(3), args[3].AsInt(4), args[4].AsInt(0), is_cplace_mpeg2(args, 5), env);
   case 5:
-    return new aWarp4(args[0].AsClip(), args[1].AsClip(), args[2].AsInt(3), args[3].AsInt(4), args[4].AsInt(NULL), is_cplace_mpeg2(args, 5), env);
+    return new aWarp4(args[0].AsClip(), args[1].AsClip(), args[2].AsInt(3), args[3].AsInt(4), args[4].AsInt(0), is_cplace_mpeg2(args, 5), env);
   }
-  return NULL;
+  return 0;
 }
 
 // thresh: 0..255

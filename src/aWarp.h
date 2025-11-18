@@ -41,7 +41,7 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
 	const int edg_pitch = edg->GetPitch(plane_edg);
 	const int dst_pitch = dst->GetPitch(plane);
 	const int row_size = dst->GetRowSize() >> dst_vi.GetPlaneWidthSubsampling (plane);
-	const int i = -(row_size + 3 & ~3);
+	const int i = -((row_size + 3) & ~3);
 	const int c = row_size + i - 1;
 	const int height = dst->GetHeight() >> dst_vi.GetPlaneHeightSubsampling (plane);
 	const unsigned char *psrc = src->GetReadPtr(plane) - i*SMAG;
@@ -65,7 +65,7 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
       int edg_pitchp = -(y ? edg_pitch : 0);
       int edg_pitchn = y != height - 1 ? edg_pitch : 0;
 
-      __asm {
+      /*__asm {
         mov	QSI, psrc
         mov	QCX, pedg
         mov	QAX, pdst
@@ -458,7 +458,7 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
           pop	QCX
 #endif
           pop	QBP
-      }
+      }*/
       psrc += src_pitch*SMAG;
       pedg += edg_pitch;
       pdst += dst_pitch;

@@ -290,36 +290,36 @@ void BlurR6(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
         "movdqa    (%%rsi), %%xmm7           \n\t" \
         "movdqa    %%xmm6, %%xmm0          \n\t" \
         "movdqa    %%xmm7, %%xmm2          \n\t" \
-        "palignr	$10, %%xmm0, %%xmm5     \n\t" \
-        "palignr	$6, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$10, %%xmm5, %%xmm0     \n\t" \
+        "palignr	$6, %%xmm6, %%xmm2      \n\t" \
         "pavgb     %%xmm2, %%xmm0          \n\t" \
         "movdqa    %%xmm6, %%xmm3          \n\t" \
         "movdqa    %%xmm7, %%xmm4          \n\t" \
-        "palignr	$11, %%xmm3, %%xmm5     \n\t" \
-        "palignr	$5, %%xmm4, %%xmm6      \n\t" \
+        "palignr	$11, %%xmm5, %%xmm3     \n\t" \
+        "palignr	$5, %%xmm6, %%xmm4      \n\t" \
         "pavgb     %%xmm4, %%xmm3          \n\t" \
         "pavgb     %%xmm3, %%xmm0          \n\t" \
         "movdqa    %%xmm6, %%xmm1          \n\t" \
         "movdqa    %%xmm7, %%xmm2          \n\t" \
-        "palignr	$12, %%xmm1, %%xmm5     \n\t" \
-        "palignr	$4, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$12, %%xmm5, %%xmm1     \n\t" \
+        "palignr	$4, %%xmm6, %%xmm2      \n\t" \
         "pavgb     %%xmm2, %%xmm1          \n\t" \
         "movdqa    %%xmm6, %%xmm3          \n\t" \
         "movdqa    %%xmm7, %%xmm4          \n\t" \
-        "palignr	$13, %%xmm3, %%xmm5     \n\t" \
-        "palignr	$3, %%xmm4, %%xmm6      \n\t" \
+        "palignr	$13, %%xmm5, %%xmm3     \n\t" \
+        "palignr	$3, %%xmm6, %%xmm4      \n\t" \
         "pavgb     %%xmm4, %%xmm3          \n\t" \
         "pavgb     %%xmm3, %%xmm1          \n\t" \
         "pavgb     %%xmm1, %%xmm0          \n\t" \
         "movdqa    %%xmm6, %%xmm1          \n\t" \
         "movdqa    %%xmm7, %%xmm2          \n\t" \
-        "palignr	$14, %%xmm1, %%xmm5     \n\t" \
-        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$14, %%xmm5, %%xmm1     \n\t" \
+        "palignr	$2, %%xmm6, %%xmm2      \n\t" \
         "pavgb     %%xmm2, %%xmm1          \n\t" \
         "movdqa    %%xmm6, %%xmm3          \n\t" \
         "movdqa    %%xmm7, %%xmm4          \n\t" \
-        "palignr	$15, %%xmm3, %%xmm5     \n\t" \
-        "palignr	$1, %%xmm4, %%xmm6      \n\t" \
+        "palignr	$15, %%xmm5, %%xmm3     \n\t" \
+        "palignr	$1, %%xmm6, %%xmm4     \n\t" \
         "pavgb     %%xmm4, %%xmm3          \n\t" \
         "pavgb     %%xmm3, %%xmm1          \n\t" \
         "pavgb     %%xmm6, %%xmm1          \n\t" \
@@ -342,36 +342,36 @@ void BlurR6(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
         "pshufb    %%xmm0, %%xmm7          \n\t" \
         "movdqa    %%xmm6, %%xmm0          \n\t" \
         "movdqa    %%xmm7, %%xmm2          \n\t" \
-        "palignr	$10, %%xmm0, %%xmm5     \n\t" \
-        "palignr	$6, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$10, %%xmm5, %%xmm0     \n\t" \
+        "palignr	$6, %%xmm6, %%xmm2     \n\t" \
         "pavgb     %%xmm2, %%xmm0          \n\t" \
         "movdqa    %%xmm6, %%xmm3          \n\t" \
         "movdqa    %%xmm7, %%xmm4          \n\t" \
-        "palignr	$11, %%xmm3, %%xmm5     \n\t" \
-        "palignr	$5, %%xmm4, %%xmm6      \n\t" \
+        "palignr	$11, %%xmm5, %%xmm3     \n\t" \
+        "palignr	$5, %%xmm6, %%xmm4     \n\t" \
         "pavgb     %%xmm4, %%xmm3          \n\t" \
         "pavgb     %%xmm3, %%xmm0          \n\t" \
         "movdqa    %%xmm6, %%xmm1          \n\t" \
         "movdqa    %%xmm7, %%xmm2          \n\t" \
-        "palignr	$12, %%xmm1, %%xmm5     \n\t" \
-        "palignr	$4, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$12, %%xmm5, %%xmm1    \n\t" \
+        "palignr	$4, %%xmm6, %%xmm2      \n\t" \
         "pavgb     %%xmm2, %%xmm1          \n\t" \
         "movdqa    %%xmm6, %%xmm3          \n\t" \
         "movdqa    %%xmm7, %%xmm4          \n\t" \
-        "palignr	$13, %%xmm3, %%xmm5     \n\t" \
-        "palignr	$3, %%xmm4, %%xmm6      \n\t" \
+        "palignr	$13, %%xmm5, %%xmm3     \n\t" \
+        "palignr	$3, %%xmm6, %%xmm4      \n\t" \
         "pavgb     %%xmm4, %%xmm3          \n\t" \
         "pavgb     %%xmm3, %%xmm1          \n\t" \
         "pavgb     %%xmm1, %%xmm0          \n\t" \
         "movdqa    %%xmm6, %%xmm1          \n\t" \
         "movdqa    %%xmm7, %%xmm2          \n\t" \
-        "palignr	$14, %%xmm1, %%xmm5     \n\t" \
-        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$14, %%xmm5, %%xmm1     \n\t" \
+        "palignr	$2, %%xmm6, %%xmm2      \n\t" \
         "pavgb     %%xmm2, %%xmm1          \n\t" \
         "movdqa    %%xmm6, %%xmm3          \n\t" \
         "movdqa    %%xmm7, %%xmm4          \n\t" \
-        "palignr	$15, %%xmm3, %%xmm5     \n\t" \
-        "palignr	$1, %%xmm4, %%xmm6      \n\t" \
+        "palignr	$15, %%xmm5, %%xmm3     \n\t" \
+        "palignr	$1, %%xmm6, %%xmm4      \n\t" \
         "pavgb     %%xmm4, %%xmm3          \n\t" \
         "pavgb     %%xmm3, %%xmm1          \n\t" \
         "pavgb     %%xmm6, %%xmm1          \n\t" \
@@ -613,13 +613,13 @@ void BlurR2(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
         "movdqa     (%%rsi), %%xmm7         \n\t" \
         "movdqa     %%xmm6, %%xmm0          \n\t" \
         "movdqa     %%xmm7, %%xmm2          \n\t" \
-        "palignr	$14, %%xmm0, %%xmm5     \n\t" \
-        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$14, %%xmm5, %%xmm0     \n\t" \
+        "palignr	$2, %%xmm6, %%xmm2      \n\t" \
         "pavgb      %%xmm2, %%xmm0          \n\t" \
         "movdqa     %%xmm6, %%xmm1          \n\t" \
         "movdqa     %%xmm7, %%xmm3          \n\t" \
-        "palignr	$15, %%xmm1, %%xmm5     \n\t" \
-        "palignr	$1, %%xmm3, %%xmm6      \n\t" \
+        "palignr	$15, %%xmm5, %%xmm1     \n\t" \
+        "palignr	$1, %%xmm6, %%xmm3      \n\t" \
         "pavgb      %%xmm6, %%xmm0          \n\t" \
         "pavgb      %%xmm3, %%xmm1          \n\t" \
         "pavgb      %%xmm6, %%xmm0          \n\t" \
@@ -641,13 +641,13 @@ void BlurR2(PVideoFrame &src, PVideoFrame &tmp, int plane, const VideoInfo &src_
         "pshufb     %%xmm0, %%xmm7          \n\t" \
         "movdqa     %%xmm6, %%xmm0          \n\t" \
         "movdqa     %%xmm7, %%xmm2          \n\t" \
-        "palignr	$14, %%xmm0, %%xmm5     \n\t" \
-        "palignr	$2, %%xmm2, %%xmm6      \n\t" \
+        "palignr	$14, %%xmm5, %%xmm0     \n\t" \
+        "palignr	$2, %%xmm6, %%xmm2      \n\t" \
         "pavgb      %%xmm2, %%xmm0          \n\t" \
         "movdqa     %%xmm6, %%xmm1          \n\t" \
         "movdqa     %%xmm7, %%xmm3          \n\t" \
-        "palignr	$15, %%xmm1, %%xmm5     \n\t" \
-        "palignr	$1, %%xmm3, %%xmm6      \n\t" \
+        "palignr	$15, %%xmm5, %%xmm1     \n\t" \
+        "palignr	$1, %%xmm6, %%xmm3      \n\t" \
         "pavgb      %%xmm6, %%xmm0          \n\t" \
         "pavgb      %%xmm3, %%xmm1          \n\t" \
         "pavgb      %%xmm6, %%xmm0          \n\t" \

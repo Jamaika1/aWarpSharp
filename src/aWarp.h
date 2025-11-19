@@ -55,7 +55,7 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
 	const short x_limit_max[8] = { (short)(c*SMAG)    , (short)((c-1)*SMAG), (short)((c-2)*SMAG), (short)((c-3)*SMAG), 
                                  (short)((c-4)*SMAG), (short)((c-5)*SMAG), (short)((c-6)*SMAG), (short)((c-7)*SMAG)};
 
-  if (g_cpuid & CPUF_SSE2)
+  if (!(g_cpuid & CPUF_SSE2))
   {
     // SSE2 and SSSE3 versions
     for (int y = 0; y < height; y++)
@@ -65,400 +65,441 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
       int edg_pitchp = -(y ? edg_pitch : 0);
       int edg_pitchn = y != height - 1 ? edg_pitch : 0;
 
-      /*__asm {
-        mov	QSI, psrc
-        mov	QCX, pedg
-        mov	QAX, pdst
-        movsx_int	QDX, src_pitch
-        movsx_int	QBX, edg_pitchp
-        movsx_int	QDI, i          // signed!
-        sub	QAX, 8
-        add	QDX, QSI
-        add	QBX, QCX
-        movd	xmm1, y_limit_min
-        movd	xmm2, y_limit_max
-        movdqu	xmm3, x_limit_min
-        movdqu	xmm4, x_limit_max
-        movd	xmm6, depth
-        movd	xmm0, src_pitch
-        pcmpeqw	xmm7, xmm7
-        psrlw	xmm7, 0Fh
-        punpcklwd	xmm0, xmm7
-        pshufd	xmm1, xmm1, 0
-        pshufd	xmm2, xmm2, 0
-        pshufd	xmm6, xmm6, 0
-        pshufd	xmm0, xmm0, 0
-        packssdw	xmm1, xmm1
-        packssdw	xmm2, xmm2
-        packssdw	xmm6, xmm6
-        pcmpeqw	xmm5, xmm5
-        psllw	xmm5, 0Fh
-        push	QBP            // save ebp, also for x64!
-#if defined(X86_32)
-        // make room for local variables
-        push	edg_pitchn
-        
-        lea	ebp, [esp - 5Ch]
-        and ebp, ~0Fh
-        xchg	esp, ebp
-        
-        push	eax
-        push	ebp
-        mov	ebp, [ebp]
-        add	ebp, ecx
-
-        movdqa	xmm7, [QDI + QCX]
-        movdqa[esp + 8h], xmm0
-        movdqa[esp + 18h], xmm6
-        movdqa[esp + 28h], xmm1
-        movdqa[esp + 38h], xmm2
-        movdqa[esp + 48h], xmm3
-        movdqa[esp + 58h], xmm4
-#else
-        movsx_int	rbp, edg_pitchn
-        mov	r8, rax                     // save to R8
-        add	rbp, rcx
-        movdqa	xmm7, [rdi + rcx]       
-        movdqa	xmm8, xmm0	// [rsp+ 8h]
-        movdqa	xmm9, xmm6	// [rsp+18h]
-        movdqa	xmm10, xmm1	// [rsp+28h]
-        movdqa	xmm11, xmm2	// [rsp+38h]
-        movdqa	xmm12, xmm3	// [rsp+48h]
-        movdqa	xmm13, xmm4	// [rsp+58h]
-#endif
-        movdqa	xmm1, xmm7
-        pslldq	xmm7, 7
-        punpcklqdq	xmm7, xmm1
-        psrldq	xmm1, 1
-        psrldq	xmm7, 7
-        test	g_cpuid, CPUF_SSSE3
-        jnz	l3
-        psrlw	xmm5, 8
-        align	10h
-        // SSE2 version
-        l2 :
-        movq	xmm4, qword ptr[QDI + QBX]
-          movq	xmm2, qword ptr[QDI + QBP]
-          pxor	xmm3, xmm3
-          punpcklbw	xmm7, xmm3
-          punpcklbw	xmm1, xmm3
-          punpcklbw	xmm4, xmm3
-          punpcklbw	xmm2, xmm3
-          psubw	xmm7, xmm1
-          psubw	xmm4, xmm2
-          psllw	xmm7, 7
-          psllw	xmm4, 7
-          pmulhw	xmm7, xmm6 // depth
-          pmulhw	xmm4, xmm6 // depth
-#if defined(X86_32)
-          movdqa	xmm6, [esp + 8h] // preload 1 src_pitch
-          pmaxsw	xmm4, [esp + 28h] // y_limit_min
-          pminsw	xmm4, [esp + 38h] // y_limit_max
-#else
-          movdqa	xmm6, xmm8	// preload 1 src_pitch
-          pmaxsw	xmm4, xmm10	// y_limit_min
-          pminsw	xmm4, xmm11	// y_limit_max
-#endif
-          pcmpeqw	xmm3, xmm3
-          psrlw	xmm3, 9
-          movdqa	xmm1, xmm7
-          movdqa	xmm2, xmm4
+      asm volatile ( \
+        "mov        %[psrc], %%rsi          \n\t" \
+        "mov        %[pedg], %%rcx          \n\t" \
+        "mov        %[pdst], %%rax          \n\t" \
+        "movsxd     %[src_pitch], %%rdx     \n\t" \
+        "movsxd     %[edg_pitchp], %%rbx    \n\t" \
+        "movsxd     %[i], %%rdi             \n\t" \
+        "sub        $0x08, %%rax            \n\t" \
+        "add        %%rsi, %%rdx            \n\t" \
+        "add        %%rcx, %%rbx            \n\t" \
+    : \
+    : [psrc] "r" (psrc), [pedg] "r" (pedg), [pdst] "r" (pdst), [src_pitch] "r" (src_pitch), [edg_pitchp] "r" (edg_pitchp), [i] "r" (i) \
+    : "memory", "cc", "%rsi", "%rdi", "%rax", "%rbx", "%rcx", "%rdx" );
+      asm volatile ( \
+        "movd       (%[y_limit_min]), %%xmm1  \n\t" \
+        "movd       (%[y_limit_max]), %%xmm2  \n\t" \
+        "movdqu     (%[x_limit_min]), %%xmm3  \n\t" \
+        "movdqu     (%[x_limit_max]), %%xmm4  \n\t" \
+        "movd       (%[depth]), %%xmm6        \n\t" \
+        "movd       (%[src_pitch]), %%xmm0    \n\t" \
+        "pcmpeqw    %%xmm7, %%xmm7          \n\t" \
+        "psrlw      $0x0f, %%xmm7           \n\t" \
+        "punpcklwd  %%xmm7, %%xmm0           \n\t" \
+        "pshufd     $0, %%xmm1, %%xmm1      \n\t" \
+        "pshufd     $0, %%xmm2, %%xmm2      \n\t" \
+        "pshufd     $0, %%xmm6, %%xmm6      \n\t" \
+        "pshufd     $0, %%xmm0, %%xmm0      \n\t" \
+        "packssdw   %%xmm1, %%xmm1          \n\t" \
+        "packssdw   %%xmm2, %%xmm2          \n\t" \
+        "packssdw   %%xmm6, %%xmm6          \n\t" \
+        "pcmpeqw    %%xmm5, %%xmm5          \n\t" \
+        "psllw      $0x0f, %%xmm5           \n\t" \
+        "push       %%rbp                   \n\t" \
+        "movsxd     %[edg_pitchn], %%rbp    \n\t" \
+        "mov        %%rax, %%r8             \n\t" \
+        "add        %%rcx, %%rbp            \n\t" \
+        "movdqa     (%%rdi,%%rcx), %%xmm7   \n\t" \
+        "movdqa     %%xmm0, %%xmm8          \n\t" \
+        "movdqa     %%xmm6, %%xmm9          \n\t" \
+        "movdqa     %%xmm1, %%xmm10         \n\t" \
+        "movdqa     %%xmm2, %%xmm11         \n\t" \
+        "movdqa     %%xmm3, %%xmm12         \n\t" \
+        "movdqa     %%xmm4, %%xmm13         \n\t" \
+        "movdqa     %%xmm7, %%xmm1          \n\t" \
+        "pslldq     $7, %%xmm7              \n\t" \
+        "punpcklqdq %%xmm1, %%xmm7          \n\t" \
+        "psrldq     $1, %%xmm1              \n\t" \
+        "psrldq     $7, %%xmm7              \n\t" \
+        /*"test      %[CPUF_SSSE3], %[g_cpuid] \n\t"*/ \
+        "jnz        29f                     \n\t" \
+        "psrlw      $8, %%xmm5              \n\t" \
+        ".align     0x10                    \n\t" \
+        "12:                                \n\t" \
+        "movq       (%%rdi,%%rbx), %%xmm4   \n\t" \
+        "movq       (%%rdi,%%rbp), %%xmm2   \n\t" \
+        "pxor       %%xmm3, %%xmm3          \n\t" \
+        "punpcklbw  %%xmm3, %%xmm7          \n\t" \
+        "punpcklbw  %%xmm3, %%xmm1          \n\t" \
+        "punpcklbw  %%xmm3, %%xmm4          \n\t" \
+        "punpcklbw  %%xmm3, %%xmm2          \n\t" \
+        "psubw      %%xmm1, %%xmm7          \n\t" \
+        "psubw      %%xmm2, %%xmm4          \n\t" \
+        "psllw      $7, %%xmm7              \n\t" \
+        "psllw      $7, %%xmm4              \n\t" \
+        "pmulhw     %%xmm6, %%xmm7          \n\t" \
+        "pmulhw     %%xmm6, %%xmm4          \n\t" \
+        "movdqa     %%xmm8, %%xmm6          \n\t" \
+        "pmaxsw     %%xmm10, %%xmm4         \n\t" \
+        "pminsw     %%xmm11, %%xmm4         \n\t" \
+        "pcmpeqw    %%xmm3, %%xmm3          \n\t" \
+        "psrlw      $9, %%xmm3              \n\t" \
+        "movdqa     %%xmm7, %%xmm1          \n\t" \
+        "movdqa     %%xmm4, %%xmm2          \n\t" \
+    : \
+    : [y_limit_min] "r" (y_limit_min), [y_limit_max] "r" (y_limit_max), [x_limit_min] "r" (x_limit_min), [x_limit_max] "r" (x_limit_max),
+      [depth] "r" (depth), [src_pitch] "r" (src_pitch), [edg_pitchn] "r" (edg_pitchn) \
+    : "memory", "cc", "%r8", "%rdi", "%rax", "%rbp", "%rbx", "%rcx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7",
+      "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13" );
 #if SMAGL
-          psllw	xmm4, SMAGL
-          psllw	xmm7, SMAGL
+      asm volatile ( \
+        "psllw      (%[smagl]), %%xmm4      \n\t" \
+        "psllw      (%[smagl]), %%xmm7      \n\t" \
+    : \
+    : [smagl] "r" ((int)SMAGL) \
+    : "memory", "cc", "%xmm4", "%xmm7" );
 #endif
-          pand	xmm7, xmm3 // 007F
-          pand	xmm4, xmm3 // 007F
-          psraw	xmm1, 7 - SMAGL
-          psraw	xmm2, 7 - SMAGL
-
-          movd	xmm3, edi
-          pshufd	xmm3, xmm3, 0
+      asm volatile ( \
+        "pand       %%xmm3, %%xmm7          \n\t" \
+        "pand       %%xmm3, %%xmm4          \n\t" \
+        "psraw      (%[smagl7]), %%xmm1     \n\t" \
+        "psraw      (%[smagl7]), %%xmm2     \n\t" \
+        "movd       %%edi, %%xmm3           \n\t" \
+        "pmaxsw     %%xmm2, %%xmm1          \n\t" \
+    : \
+    : [smagl7] "r" (7-(int)SMAGL) \
+    : "memory", "cc", "%edi", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm7" );
 #if SMAGL
-          pslld	xmm3, SMAGL
+      asm volatile ( \
+        "pslld      (%[smagl]), %%xmm3      \n\t" \
+    : \
+    : [smagl] "r" ((int)SMAGL) \
+    : "memory", "cc", "%xmm3" );
 #endif
-          packssdw	xmm3, xmm3
-          paddsw	xmm1, xmm3
-
-#if defined(X86_32)
-          movdqa	xmm3, [esp + 58h] // x_limit_max
-          movdqa	xmm0, [esp + 48h] // x_limit_min
-#else
-          movdqa	xmm3, xmm13	// x_limit_max
-          movdqa	xmm0, xmm12	// x_limit_min
-#endif
-          pcmpgtw	xmm3, xmm1
-          pcmpgtw	xmm0, xmm1
-#if defined(X86_32)
-          pminsw	xmm1, [esp + 58h] // x_limit_max
-          pmaxsw	xmm1, [esp + 48h] // x_limit_min
-#else
-          pminsw	xmm1, xmm13	// x_limit_max
-          pmaxsw	xmm1, xmm12	// x_limit_min
-#endif
-          pand	xmm7, xmm3
-          pandn	xmm0, xmm7
-
-          movdqa	xmm7, xmm2
-          punpcklwd	xmm2, xmm1
-          punpckhwd	xmm7, xmm1
-          pmaddwd	xmm2, xmm6 // 1 src_pitch
-          pmaddwd	xmm7, xmm6 // 1 src_pitch
-
-          movd	eax, xmm2
-          psrldq	xmm2, 4
-          pinsrw	xmm3, [QAX + QSI], 0
-          pinsrw	xmm1, [QAX + QDX], 0
-          movd	eax, xmm2
-          psrldq	xmm2, 4
-          pinsrw	xmm3, [QAX + QSI + 1 * SMAG], 1
-          pinsrw	xmm1, [QAX + QDX + 1 * SMAG], 1
-          movd	eax, xmm2
-          psrldq	xmm2, 4
-          pinsrw	xmm3, [QAX + QSI + 2 * SMAG], 2
-          pinsrw	xmm1, [QAX + QDX + 2 * SMAG], 2
-          movd	eax, xmm2
-          pinsrw	xmm3, [QAX + QSI + 3 * SMAG], 3
-          pinsrw	xmm1, [QAX + QDX + 3 * SMAG], 3
-          movd	eax, xmm7
-          psrldq	xmm7, 4
-          pinsrw	xmm3, [QAX + QSI + 4 * SMAG], 4
-          pinsrw	xmm1, [QAX + QDX + 4 * SMAG], 4
-          movd	eax, xmm7
-          psrldq	xmm7, 4
-          pinsrw	xmm3, [QAX + QSI + 5 * SMAG], 5
-          pinsrw	xmm1, [QAX + QDX + 5 * SMAG], 5
-          movd	eax, xmm7
-          psrldq	xmm7, 4
-          pinsrw	xmm3, [QAX + QSI + 6 * SMAG], 6
-          pinsrw	xmm1, [QAX + QDX + 6 * SMAG], 6
-          movd	eax, xmm7
-          pinsrw	xmm3, [QAX + QSI + 7 * SMAG], 7
-          pinsrw	xmm1, [QAX + QDX + 7 * SMAG], 7
-#if defined(X86_32)
-          mov	eax, [esp + 4]
-#else
-          mov	rax, r8    // restore rax
-#endif
-
-          pcmpeqw	xmm6, xmm6
-          movdqa	xmm2, xmm3
-          psrlw	xmm6, 8
-          movdqa	xmm7, xmm1
-          pand	xmm3, xmm6 // 00FF
-          pand	xmm1, xmm6 // 00FF
-          movdqa	xmm6, xmm5
-          psubw	xmm6, xmm0
-          pmullw	xmm3, xmm6
-          pmullw	xmm1, xmm6
-          movdqa	xmm6, xmm5 // 0080
-          psrlw	xmm5, 1
-          psrlw	xmm2, 8
-          psrlw	xmm7, 8
-          pmullw	xmm2, xmm0
-          pmullw	xmm7, xmm0
-          paddw	xmm3, xmm2
-          paddw	xmm1, xmm7
-          paddw	xmm3, xmm5 // 0040
-          paddw	xmm1, xmm5 // 0040
-          psraw	xmm3, 7
-          psraw	xmm1, 7
-
-          psubw	xmm6, xmm4
-          movdqu	xmm7, [QDI + QCX + 7]
-          pmullw	xmm1, xmm4
-          pmullw	xmm3, xmm6
-          paddw	xmm3, xmm1
-          movdqa	xmm1, xmm7
-#if defined(X86_32)
-            movdqa	xmm6, [esp + 18h] // preload depth
-#else
-            movdqa	xmm6, xmm9	// preload depth
-#endif
-
-          paddw	xmm3, xmm5 // 0040
-          psrldq	xmm1, 2
-          psraw	xmm3, 7
-          paddw	xmm5, xmm5
-          packuswb	xmm3, xmm3
-          add	QDI, 8
-          jg	ls
-          movq	qword ptr[QDI + QAX], xmm3
-          jnz	l2
-          jmp	lx
-          align	10h
-          // SSSE3 version (pmaddubsw, psignw, palignr)
-          l3 :
-        movq	xmm4, qword ptr[QDI + QBX]
-          movq	xmm2, qword ptr[QDI + QBP]
-          pxor	xmm0, xmm0
-          punpcklbw	xmm7, xmm0
-          punpcklbw	xmm1, xmm0
-          punpcklbw	xmm4, xmm0
-          punpcklbw	xmm2, xmm0
-          psubw	xmm7, xmm1
-          psubw	xmm4, xmm2
-          psllw	xmm7, 7
-          psllw	xmm4, 7
-          pmulhw	xmm7, xmm6 // depth
-          pmulhw	xmm4, xmm6 // depth
-          movd	xmm6, edi // preload
-#if defined(X86_32)
-          pmaxsw	xmm4, [esp + 28h] // y_limit_min
-          pminsw	xmm4, [esp + 38h] // y_limit_max
-#else
-          pmaxsw	xmm4, xmm10	// y_limit_min
-          pminsw	xmm4, xmm11	// y_limit_max
-#endif
-
-          pshufd	xmm6, xmm6, 0
+      asm volatile ( \
+        "packssdw   %%xmm3, %%xmm3          \n\t" \
+        "paddsw     %%xmm3, %%xmm1          \n\t" \
+        "movdqa     %%xmm13, %%xmm3          \n\t" \
+        "movdqa     %%xmm12, %%xmm0          \n\t" \
+        "pcmpgtw    %%xmm1, %%xmm3          \n\t" \
+        "pcmpgtw    %%xmm1, %%xmm0          \n\t" \
+        "pminsw     %%xmm13, %%xmm1          \n\t" \
+        "pmaxsw     %%xmm12, %%xmm1          \n\t" \
+        "pand       %%xmm3, %%xmm7          \n\t" \
+        "pandn      %%xmm7, %%xmm0          \n\t" \
+        "movdqa     %%xmm2, %%xmm7          \n\t" \
+        "punpcklwd  %%xmm1, %%xmm2          \n\t" \
+        "punpckhwd  %%xmm1, %%xmm7          \n\t" \
+        "pmaddwd	%%xmm6, %%xmm2          \n\t" \
+        "pmaddwd	%%xmm6, %%xmm7          \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "pinsrw     $0, (%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $0, (%%rax,%%rdx), %%xmm1 \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13" );
 #if SMAGL
-          pslld	xmm6, SMAGL
+      asm volatile ( \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "pinsrw     $1, 0x01(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $1, 0x01(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "pinsrw     $2, 0x02(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $2, 0x02(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "pinsrw     $3, 0x03(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $3, 0x03(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "pinsrw     $4, 0x04(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $4, 0x04(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "pinsrw     $5, 0x05(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $5, 0x05(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "pinsrw     $6, 0x06(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $6, 0x06(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "pinsrw     $7, 0x07(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $7, 0x07(%%rax,%%rdx), %%xmm1 \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13" );
+#else
+      asm volatile ( \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "pinsrw     $1, 1(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $1, 1(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "pinsrw     $2, 2(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $2, 2(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "pinsrw     $3, 3(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $3, 3(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "pinsrw     $4, 4(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $4, 4(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "pinsrw     $5, 5(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $5, 5(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "pinsrw     $6, 6(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $6, 6(%%rax,%%rdx), %%xmm1 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "pinsrw     $7, 7(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $7, 7(%%rax,%%rdx), %%xmm1 \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13" );
 #endif
-
-          pcmpeqw	xmm0, xmm0
-          psrlw	xmm0, 9
-          movdqa	xmm2, xmm4
-          movdqa	xmm1, xmm7
+      asm volatile ( \
+        "mov        %%r8, %%rax             \n\t" \
+        "pcmpeqw    %%xmm6, %%xmm6          \n\t" \
+        "movdqa     %%xmm3, %%xmm2          \n\t" \
+        "psrlw      $8, %%xmm6              \n\t" \
+        "movdqa     %%xmm1, %%xmm7          \n\t" \
+        "pand       %%xmm6, %%xmm3          \n\t" \
+        "pand       %%xmm6, %%xmm1          \n\t" \
+        "movdqa     %%xmm5, %%xmm6          \n\t" \
+        "psubw      %%xmm0, %%xmm6          \n\t" \
+        "pmullw     %%xmm6, %%xmm3          \n\t" \
+        "pmullw     %%xmm6, %%xmm1          \n\t" \
+        "movdqa     %%xmm5, %%xmm6          \n\t" \
+        "psrlw      $1, %%xmm5              \n\t" \
+        "psrlw      $8, %%xmm2              \n\t" \
+        "psrlw      $8, %%xmm7              \n\t" \
+        "pmullw     %%xmm0, %%xmm2          \n\t" \
+        "pmullw     %%xmm0, %%xmm7          \n\t" \
+        "paddw      %%xmm2, %%xmm3          \n\t" \
+        "paddw      %%xmm7, %%xmm1          \n\t" \
+        "paddw      %%xmm5, %%xmm3          \n\t" \
+        "paddw      %%xmm5, %%xmm1          \n\t" \
+        "psraw      $7, %%xmm3              \n\t" \
+        "psraw      $7, %%xmm1              \n\t" \
+        "psubw      %%xmm4, %%xmm6          \n\t" \
+        "movdqu     7(%%rdi,%%rcx), %%xmm7  \n\t" \
+        "pmullw     %%xmm4, %%xmm1          \n\t" \
+        "pmullw     %%xmm6, %%xmm3          \n\t" \
+        "paddw      %%xmm1, %%xmm3          \n\t" \
+        "movdqa     %%xmm7, %%xmm1          \n\t" \
+        "movdqa     %%xmm9, %%xmm6          \n\t" \
+        "paddw      %%xmm5, %%xmm3          \n\t" \
+        "psrldq     $2, %%xmm1              \n\t" \
+        "psraw      $7, %%xmm3              \n\t" \
+        "paddw      %%xmm5, %%xmm5          \n\t" \
+        "packuswb   %%xmm3, %%xmm3          \n\t" \
+        "add        $8, %%rdi               \n\t" \
+        "jg         30f                     \n\t" \
+        "movq       %%xmm3, (%%rdi,%%rax)   \n\t" \
+        "jnz        12b                     \n\t" \
+        "jmp        31f                     \n\t" \
+        ".align     0x10                    \n\t" \
+        "29:                                \n\t" \
+        "movq       (%%rdi,%%rbx), %%xmm4   \n\t" \
+        "movq       (%%rdi,%%rbp), %%xmm2   \n\t" \
+        "pxor       %%xmm0, %%xmm0          \n\t" \
+        "punpcklbw  %%xmm0, %%xmm7          \n\t" \
+        "punpcklbw  %%xmm0, %%xmm1          \n\t" \
+        "punpcklbw  %%xmm0, %%xmm4          \n\t" \
+        "punpcklbw  %%xmm0, %%xmm2          \n\t" \
+        "psubw      %%xmm1, %%xmm7          \n\t" \
+        "psubw      %%xmm2, %%xmm4          \n\t" \
+        "psllw      $7, %%xmm7              \n\t" \
+        "psllw      $7, %%xmm4              \n\t" \
+        "pmulhw     %%xmm6, %%xmm7          \n\t" \
+        "pmulhw     %%xmm6, %%xmm4          \n\t" \
+        "movd       %%edi, %%xmm6           \n\t"
+        "pmaxsw     %%xmm10, %%xmm4         \n\t" \
+        "pminsw     %%xmm11, %%xmm4         \n\t" \
+        "pshufd     $0, %%xmm6, %%xmm6      \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%edi", "%r8", "%rbp", "%rdi", "%rax", "%rbx", "%rcx", "%rdx", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm10", "%xmm11", "%xmm12", "%xmm13" );
 #if SMAGL
-          psllw	xmm4, SMAGL
-          psllw	xmm7, SMAGL
+      asm volatile ( \
+        "pslld      (%[smagl]), %%xmm6      \n\t" \
+    : \
+    : [smagl] "r" ((int)SMAGL) \
+    : "memory", "cc", "%xmm6" );
 #endif
-          pand	xmm4, xmm0 // 007F
-          pand	xmm7, xmm0 // 007F
-
-          psraw	xmm1, 7 - SMAGL
-          packssdw	xmm6, xmm6
-          paddsw	xmm1, xmm6
-#if defined(X86_32)
-          movdqa	xmm6, [esp + 8h] // preload 1 src_pitch
-
-          movdqa	xmm0, [esp + 58h] // x_limit_max
-          movdqa	xmm3, [esp + 48h] // x_limit_min
+      asm volatile ( \
+        "pcmpeqw    %%xmm0, %%xmm0          \n\t" \
+        "psrlw      $9, %%xmm0              \n\t" \
+        "movdqa     %%xmm4, %%xmm2          \n\t" \
+        "movdqa     %%xmm7, %%xmm1          \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%xmm0", "%xmm1", "%xmm2", "%xmm4", "%xmm7" );
+#if SMAGL
+      asm volatile ( \
+        "psllw      (%[smagl]), %%xmm4      \n\t" \
+        "psllw      (%[smagl]), %%xmm7      \n\t" \
+    : \
+    : [smagl] "r" ((int)SMAGL) \
+    : "memory", "cc", "%xmm4", "%xmm7" );
+#endif
+      asm volatile ( \
+        "pand       %%xmm0, %%xmm4          \n\t" \
+        "pand       %%xmm0, %%xmm7          \n\t" \
+        "psraw      (%[smagl7]), %%xmm1     \n\t" \
+        "packssdw   %%xmm6, %%xmm6          \n\t" \
+        "paddsw     %%xmm6, %%xmm1          \n\t" \
+        "movdqa     %%xmm8, %%xmm6          \n\t" \
+        "movdqa     %%xmm13, %%xmm0         \n\t" \
+        "movdqa     %%xmm12, %%xmm3         \n\t" \
+        "pcmpgtw    %%xmm1, %%xmm0          \n\t" \
+        "pcmpgtw    %%xmm1, %%xmm3          \n\t" \
+        "pmaxsw     %%xmm13, %%xmm1         \n\t" \
+        "pminsw     %%xmm12, %%xmm1         \n\t" \
+        "pand       %%xmm0, %%xmm7          \n\t" \
+        "pandn      %%xmm7, %%xmm3          \n\t" \
+        "psraw      (%[smagl7]), %%xmm2     \n\t" \
+        "movdqa     %%xmm2, %%xmm7          \n\t" \
+        "punpcklwd  %%xmm1, %%xmm2          \n\t" \
+        "punpckhwd  %%xmm1, %%xmm7          \n\t" \
+        "pmaddwd	%%xmm6, %%xmm2          \n\t" \
+        "pmaddwd	%%xmm6, %%xmm7          \n\t" \
+        "movdqa     %%xmm9, %%xmm6          \n\t" \
+        "psignw     %%xmm5, %%xmm3          \n\t" \
+        "psignw     %%xmm5, %%xmm4          \n\t" \
+        "packsswb   %%xmm5, %%xmm5          \n\t" \
+        "packsswb   %%xmm3, %%xmm3          \n\t" \
+        "packsswb   %%xmm4, %%xmm4          \n\t" \
+        "movdqa     %%xmm5, %%xmm0          \n\t" \
+        "movdqa     %%xmm5, %%xmm1          \n\t" \
+        "psubb      %%xmm3, %%xmm0          \n\t" \
+        "psubb      %%xmm4, %%xmm1          \n\t" \
+        "psrlw      $9, %%xmm5              \n\t" \
+        "punpcklbw  %%xmm3, %%xmm0          \n\t" \
+        "punpcklbw  %%xmm4, %%xmm1          \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $0, (%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $0, (%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+    : \
+    : [smagl7] "r" (7-(int)SMAGL) \
+    : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7", "%xmm8", "%xmm9", "%xmm12", "%xmm13" );
+#if SMAGL
+      asm volatile ( \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $1, 0x01(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $1, 0x01(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $2, 0x02(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $2, 0x02(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $3, 0x03(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $3, 0x03(%%rax,%%rdx), %%xmm4 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $4, 0x04(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $4, 0x04(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $5, 0x05(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $5, 0x05(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $6, 0x06(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $6, 0x06(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $7, 0x07(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $7, 0x07(%%rax,%%rdx), %%xmm4 \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7" );
 #else
-          movdqa	xmm6, xmm8	// preload 1 src_pitch
-
-          movdqa	xmm0, xmm13	// x_limit_max
-          movdqa	xmm3, xmm12	// x_limit_min
+      asm volatile ( \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $1, 1(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $1, 1(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $2, 2(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $2, 2(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm2              \n\t" \
+        "movd       %%xmm2, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $3, 3(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $3, 3(%%rax,%%rdx), %%xmm4 \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $4, 4(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $4, 4(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $5, 5(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $5, 5(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $6, 6(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $6, 6(%%rax,%%rdx), %%xmm4 \n\t" \
+        "psrldq     $4, %%xmm7              \n\t" \
+        "movd       %%xmm7, %%eax           \n\t" \
+        "movsxd     %%eax, %%rax            \n\t" \
+        "pinsrw     $7, 7(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $7, 7(%%rax,%%rdx), %%xmm4 \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7" );
 #endif
-
-          pcmpgtw	xmm0, xmm1
-          pcmpgtw	xmm3, xmm1
-#if defined(X86_32)
-          pminsw	xmm1, [esp + 58h] // x_limit_max
-          pmaxsw	xmm1, [esp + 48h] // x_limit_min
-#else
-          pminsw	xmm1, xmm13	// x_limit_max
-          pmaxsw	xmm1, xmm12	// x_limit_min
-#endif
-          pand	xmm7, xmm0
-          pandn	xmm3, xmm7
-
-          psraw	xmm2, 7 - SMAGL
-          movdqa	xmm7, xmm2
-          punpcklwd	xmm2, xmm1
-          punpckhwd	xmm7, xmm1
-          pmaddwd	xmm2, xmm6 // 1 src_pitch
-          pmaddwd	xmm7, xmm6 // 1 src_pitch
-#if defined(X86_32)
-          movdqa	xmm6, [esp + 18h] // preload depth
-#else
-          movdqa	xmm6, xmm9	// preload depth
-#endif
-
-          psignw	xmm3, xmm5 // 8000
-          psignw	xmm4, xmm5 // 8000
-          packsswb	xmm5, xmm5
-          packsswb	xmm3, xmm3
-          packsswb	xmm4, xmm4
-
-          movdqa	xmm0, xmm5 // 80
-          movdqa	xmm1, xmm5 // 80
-          psubb	xmm0, xmm3
-          psubb	xmm1, xmm4
-          psrlw	xmm5, 9
-          punpcklbw	xmm0, xmm3
-          punpcklbw	xmm1, xmm4
-
-          movd	eax, xmm2
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI], 0
-          pinsrw	xmm4, [QAX + QDX], 0
-          psrldq	xmm2, 4
-          movd	eax, xmm2
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 1 * SMAG], 1
-          pinsrw	xmm4, [QAX + QDX + 1 * SMAG], 1
-          psrldq	xmm2, 4
-          movd	eax, xmm2
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 2 * SMAG], 2
-          pinsrw	xmm4, [QAX + QDX + 2 * SMAG], 2
-          psrldq	xmm2, 4
-          movd	eax, xmm2
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 3 * SMAG], 3
-          pinsrw	xmm4, [QAX + QDX + 3 * SMAG], 3
-          movd	eax, xmm7
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 4 * SMAG], 4
-          pinsrw	xmm4, [QAX + QDX + 4 * SMAG], 4
-          psrldq	xmm7, 4
-          movd	eax, xmm7
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 5 * SMAG], 5
-          pinsrw	xmm4, [QAX + QDX + 5 * SMAG], 5
-          psrldq	xmm7, 4
-          movd	eax, xmm7
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 6 * SMAG], 6
-          pinsrw	xmm4, [QAX + QDX + 6 * SMAG], 6
-          psrldq	xmm7, 4
-          movd	eax, xmm7
-          SEXT(rax, eax)
-          pinsrw	xmm3, [QAX + QSI + 7 * SMAG], 7
-          pinsrw	xmm4, [QAX + QDX + 7 * SMAG], 7
-
-          pcmpeqw	xmm2, xmm2
-          movdqu	xmm7, [QDI + QCX + 7]
-          pmaddubsw	xmm3, xmm0
-          pmaddubsw	xmm4, xmm0
-#if defined(X86_32)
-          mov	eax, [esp + 4]
-#else
-          mov	rax, r8
-#endif
-          psignw	xmm3, xmm2
-          psignw	xmm4, xmm2
-          paddw	xmm3, xmm5 // 0040
-          paddw	xmm4, xmm5 // 0040
-          psraw	xmm3, 7
-          psraw	xmm4, 7
-          packuswb	xmm3, xmm3
-          packuswb	xmm4, xmm4
-          punpcklbw	xmm3, xmm4
-          pmaddubsw	xmm3, xmm1
-          palignr	xmm1, xmm7, 2
-          psignw	xmm3, xmm2
-
-          paddw	xmm3, xmm5 // 0040
-          psraw	xmm3, 7
-          psllw	xmm5, 9
-          packuswb	xmm3, xmm3
-          add	QDI, 8
-          jg	ls
-          movq	qword ptr[QDI + QAX], xmm3
-          jnz	l3
-          jmp	lx
-        ls :
-          movd[QDI + QAX], xmm3
-        lx :
-#if defined(X86_32)
-          pop	QSP
-          pop	QCX
-#endif
-          pop	QBP
-      }*/
+      asm volatile ( \
+        "pcmpeqw    %%xmm2, %%xmm2          \n\t" \
+        "movdqu     7(%%rdi,%%rcx), %%xmm7  \n\t" \
+        "pmaddubsw  %%xmm0, %%xmm3          \n\t" \
+        "pmaddubsw  %%xmm0, %%xmm4          \n\t" \
+        "mov        %%r8, %%rax             \n\t" \
+        "psignw     %%xmm2, %%xmm3          \n\t" \
+        "psignw     %%xmm2, %%xmm4          \n\t" \
+        "paddw      %%xmm5, %%xmm3          \n\t" \
+        "paddw      %%xmm5, %%xmm4          \n\t" \
+        "psraw      $7, %%xmm3              \n\t" \
+        "psraw      $7, %%xmm4              \n\t" \
+        "packuswb   %%xmm3, %%xmm3          \n\t" \
+        "packuswb   %%xmm4, %%xmm4          \n\t" \
+        "punpcklbw  %%xmm4, %%xmm3          \n\t" \
+        "pmaddubsw  %%xmm1, %%xmm3          \n\t" \
+        "palignr    $2, %%xmm7, %%xmm1      \n\t" \
+        "psignw     %%xmm2, %%xmm3          \n\t" \
+        "paddw      %%xmm5, %%xmm3          \n\t" \
+        "psraw      $7, %%xmm3              \n\t" \
+        "psllw      $9, %%xmm5              \n\t" \
+        "packuswb   %%xmm3, %%xmm3          \n\t" \
+        "add        $8, %%rdi               \n\t" \
+        "jg         30f                     \n\t" \
+        "movq       %%xmm3, (%%rdi,%%rax)   \n\t" \
+        "jnz        29b                     \n\t" \
+        "jmp        31f                     \n\t" \
+        "30:                                \n\t" \
+        "movd       %%xmm3, (%%rdi,%%rax)   \n\t" \
+        "31:                                \n\t" \
+        "pop        %%rbp                   \n\t" \
+    : \
+    : \
+    : "memory", "cc", "%eax", "%r8", "%rbp", "%rax", "%rcx", "%rdi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
+      "%xmm5", "%xmm6", "%xmm7" );
       psrc += src_pitch*SMAG;
       pedg += edg_pitch;
       pdst += dst_pitch;

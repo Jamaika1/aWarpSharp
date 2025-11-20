@@ -196,30 +196,30 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
       asm volatile ( \
         "movd       %%xmm2, %%eax           \n\t" \
         "psrldq     $4, %%xmm2              \n\t" \
-        "pinsrw     $1, 0x01(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $1, 0x01(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $1, 4(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $1, 4(%%rax,%%rdx), %%xmm1 \n\t" \
         "movd       %%xmm2, %%eax           \n\t" \
         "psrldq     $4, %%xmm2              \n\t" \
-        "pinsrw     $2, 0x02(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $2, 0x02(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $2, 8(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $2, 8(%%rax,%%rdx), %%xmm1 \n\t" \
         "movd       %%xmm2, %%eax           \n\t" \
-        "pinsrw     $3, 0x03(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $3, 0x03(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $3, 12(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $3, 12(%%rax,%%rdx), %%xmm1 \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "psrldq     $4, %%xmm7              \n\t" \
-        "pinsrw     $4, 0x04(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $4, 0x04(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $4, 16(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $4, 16(%%rax,%%rdx), %%xmm1 \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "psrldq     $4, %%xmm7              \n\t" \
-        "pinsrw     $5, 0x05(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $5, 0x05(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $5, 20(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $5, 20(%%rax,%%rdx), %%xmm1 \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "psrldq     $4, %%xmm7              \n\t" \
-        "pinsrw     $6, 0x06(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $6, 0x06(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $6, 24(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $6, 24(%%rax,%%rdx), %%xmm1 \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
-        "pinsrw     $7, 0x07(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $7, 0x07(%%rax,%%rdx), %%xmm1 \n\t" \
+        "pinsrw     $7, 28(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $7, 28(%%rax,%%rdx), %%xmm1 \n\t" \
     : \
     : \
     : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
@@ -390,37 +390,37 @@ void MERGE(Warp, SMAGL)(PVideoFrame &src, PVideoFrame &edg, PVideoFrame &dst, in
       asm volatile ( \
         "movd       %%xmm2, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $1, 0x01(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $1, 0x01(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $1, 4(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $1, 4(%%rax,%%rdx), %%xmm4 \n\t" \
         "psrldq     $4, %%xmm2              \n\t" \
         "movd       %%xmm2, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $2, 0x02(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $2, 0x02(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $2, 8(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $2, 8(%%rax,%%rdx), %%xmm4 \n\t" \
         "psrldq     $4, %%xmm2              \n\t" \
         "movd       %%xmm2, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $3, 0x03(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $3, 0x03(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $3, 12(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $3, 12(%%rax,%%rdx), %%xmm4 \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $4, 0x04(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $4, 0x04(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $4, 16(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $4, 16(%%rax,%%rdx), %%xmm4 \n\t" \
         "psrldq     $4, %%xmm7              \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $5, 0x05(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $5, 0x05(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $5, 20(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $5, 20(%%rax,%%rdx), %%xmm4 \n\t" \
         "psrldq     $4, %%xmm7              \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $6, 0x06(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $6, 0x06(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $6, 24(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $6, 24(%%rax,%%rdx), %%xmm4 \n\t" \
         "psrldq     $4, %%xmm7              \n\t" \
         "movd       %%xmm7, %%eax           \n\t" \
         "movsxd     %%eax, %%rax            \n\t" \
-        "pinsrw     $7, 0x07(%%rax,%%rsi), %%xmm3 \n\t" \
-        "pinsrw     $7, 0x07(%%rax,%%rdx), %%xmm4 \n\t" \
+        "pinsrw     $7, 28(%%rax,%%rsi), %%xmm3 \n\t" \
+        "pinsrw     $7, 28(%%rax,%%rdx), %%xmm4 \n\t" \
     : \
     : \
     : "memory", "cc", "%eax", "%rax", "%rdx", "%rsi", "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4",
